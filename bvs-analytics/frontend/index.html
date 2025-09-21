@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BVS Analytics - Анализ полетов БВС</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f5f5f5;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2rem 0;
+            text-align: center;
+            margin-bottom: 2rem;
+            border-radius: 10px;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .subtitle {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .card {
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+        }
+
+        .card h3 {
+            color: #667eea;
+            margin-bottom: 1rem;
+            font-size: 1.3rem;
+        }
+
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid #eee;
+        }
+
+        .metric:last-child {
+            border-bottom: none;
+        }
+
+        .metric-value {
+            font-weight: bold;
+            color: #667eea;
+            font-size: 1.1rem;
+        }
+
+        .upload-section {
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 2rem;
+        }
+
+        .upload-area {
+            border: 2px dashed #667eea;
+            border-radius: 10px;
+            padding: 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .upload-area:hover {
+            background-color: #f8f9ff;
+            border-color: #5a67d8;
+        }
+
+        .upload-area.dragover {
+            background-color: #e6f3ff;
+            border-color: #3182ce;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 0.8rem 2rem;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            margin: 0.5rem;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .status {
+            margin-top: 1rem;
+            padding: 1rem;
+            border-radius: 5px;
+            display: none;
+        }
+
+        .status.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .status.info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .api-links {
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .api-links h3 {
+            color: #667eea;
+            margin-bottom: 1rem;
+        }
+
+        .api-links a {
+            display: inline-block;
+            margin: 0.5rem 1rem 0.5rem 0;
+            padding: 0.5rem 1rem;
+            background-color: #f8f9fa;
+            color: #667eea;
+            text-decoration: none;
+            border-radius: 5px;
+            border: 1px solid #dee2e6;
+            transition: all 0.3s ease;
+        }
+
+        .api-links a:hover {
+            background-color: #667eea;
+            color: white;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+            
+            h1 {
+                font-size: 2rem;
+            }
+            
+            .dashboard {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🛩️ BVS Analytics</h1>
+            <p class="subtitle">Сервис анализа полетов гражданских беспилотников в регионах РФ</p>
+        </header>
+
+        <div class="dashboard">
+            <div class="card">
+                <h3>📊 Базовые метрики</h3>
+                <div class="metric">
+                    <span>Всего полетов:</span>
+                    <span class="metric-value" id="total-flights">-</span>
+                </div>
+                <div class="metric">
+                    <span>Средняя длительность:</span>
+                    <span class="metric-value" id="avg-duration">-</span>
+                </div>
+                <div class="metric">
+                    <span>Уникальных БВС:</span>
+                    <span class="metric-value" id="unique-aircraft">-</span>
+                </div>
+                <div class="metric">
+                    <span>Операторов:</span>
+                    <span class="metric-value" id="unique-operators">-</span>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>🏆 Топ-5 регионов</h3>
+                <div id="top-regions">
+                    <div class="metric">
+                        <span>Загрузка данных...</span>
+                        <span class="loading"></span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>🚁 Типы БВС</h3>
+                <div id="aircraft-types">
+                    <div class="metric">
+                        <span>Загрузка данных...</span>
+                        <span class="loading"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="upload-section">
+            <h3>📁 Импорт данных</h3>
+            <div class="upload-area" id="upload-area">
+                <p>📤 Перетащите Excel файл сюда или нажмите для выбора</p>
+                <p style="font-size: 0.9rem; color: #666; margin-top: 0.5rem;">
+                    Поддерживаемые форматы: .xlsx (данные Росавиации)
+                </p>
+                <input type="file" id="file-input" accept=".xlsx" style="display: none;">
+            </div>
+            <div style="text-align: center; margin-top: 1rem;">
+                <button class="btn" id="upload-btn" disabled>Загрузить файл</button>
+                <button class="btn" id="refresh-btn" onclick="loadDashboardData()">🔄 Обновить данные</button>
+            </div>
+            <div class="status" id="upload-status"></div>
+        </div>
+
+        <div class="api-links">
+            <h3>🔗 API Документация</h3>
+            <a href="http://localhost:8000/docs" target="_blank">📚 Swagger UI</a>
+            <a href="http://localhost:8000/redoc" target="_blank">📖 ReDoc</a>
+            <a href="http://localhost:8000/health" target="_blank">❤️ Health Check</a>
+            <a href="http://localhost:8000/api/v1/flights/statistics/basic" target="_blank">📊 Базовые метрики</a>
+            <a href="http://localhost:8000/api/v1/flights/regions/rating" target="_blank">🏆 Рейтинг регионов</a>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000/api/v1';
+        
+        // Элементы DOM
+        const uploadArea = document.getElementById('upload-area');
+        const fileInput = document.getElementById('file-input');
+        const uploadBtn = document.getElementById('upload-btn');
+        const uploadStatus = document.getElementById('upload-status');
+
+        // Инициализация
+        document.addEventListener('DOMContentLoaded', function() {
+            setupFileUpload();
+            loadDashboardData();
+        });
+
+        // Настройка загрузки файлов
+        function setupFileUpload() {
+            uploadArea.addEventListener('click', () => fileInput.click());
+            uploadArea.addEventListener('dragover', handleDragOver);
+            uploadArea.addEventListener('dragleave', handleDragLeave);
+            uploadArea.addEventListener('drop', handleDrop);
+            fileInput.addEventListener('change', handleFileSelect);
+            uploadBtn.addEventListener('click', uploadFile);
+        }
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        }
+
+        function handleDragLeave(e) {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                fileInput.files = files;
+                handleFileSelect();
+            }
+        }
+
+        function handleFileSelect() {
+            const file = fileInput.files[0];
+            if (file) {
+                uploadBtn.disabled = false;
+                uploadArea.innerHTML = `
+                    <p>✅ Файл выбран: ${file.name}</p>
+                    <p style="font-size: 0.9rem; color: #666;">
+                        Размер: ${(file.size / 1024 / 1024).toFixed(2)} MB
+                    </p>
+                `;
+            }
+        }
+
+        async function uploadFile() {
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            uploadBtn.disabled = true;
+            uploadBtn.innerHTML = '<span class="loading"></span> Загрузка...';
+            showStatus('Загрузка файла...', 'info');
+
+            try {
+                const response = await fetch(`${API_BASE}/flights/import`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showStatus(
+                        `✅ Успешно импортировано ${result.imported} полетов из ${result.total_processed} записей`,
+                        'success'
+                    );
+                    if (result.errors && result.errors.length > 0) {
+                        showStatus(
+                            `⚠️ Предупреждения: ${result.errors.slice(0, 3).join(', ')}`,
+                            'info'
+                        );
+                    }
+                    // Обновляем данные дашборда
+                    setTimeout(loadDashboardData, 1000);
+                } else {
+                    showStatus(`❌ Ошибка: ${result.detail || 'Неизвестная ошибка'}`, 'error');
+                }
+            } catch (error) {
+                showStatus(`❌ Ошибка сети: ${error.message}`, 'error');
+            } finally {
+                uploadBtn.disabled = false;
+                uploadBtn.innerHTML = 'Загрузить файл';
+            }
+        }
+
+        function showStatus(message, type) {
+            uploadStatus.textContent = message;
+            uploadStatus.className = `status ${type}`;
+            uploadStatus.style.display = 'block';
+            
+            if (type === 'success' || type === 'info') {
+                setTimeout(() => {
+                    uploadStatus.style.display = 'none';
+                }, 5000);
+            }
+        }
+
+        async function loadDashboardData() {
+            try {
+                // Загружаем базовые метрики
+                const metricsResponse = await fetch(`${API_BASE}/flights/statistics/basic`);
+                if (metricsResponse.ok) {
+                    const metrics = await metricsResponse.json();
+                    updateBasicMetrics(metrics);
+                }
+
+                // Загружаем рейтинг регионов
+                const regionsResponse = await fetch(`${API_BASE}/flights/regions/rating?limit=5`);
+                if (regionsResponse.ok) {
+                    const regions = await regionsResponse.json();
+                    updateTopRegions(regions);
+                }
+
+                // Загружаем типы БВС
+                const typesResponse = await fetch(`${API_BASE}/flights/analytics/aircraft-types`);
+                if (typesResponse.ok) {
+                    const types = await typesResponse.json();
+                    updateAircraftTypes(types);
+                }
+            } catch (error) {
+                console.error('Ошибка загрузки данных:', error);
+            }
+        }
+
+        function updateBasicMetrics(metrics) {
+            document.getElementById('total-flights').textContent = metrics.total_flights || 0;
+            document.getElementById('avg-duration').textContent = 
+                metrics.avg_duration_minutes ? `${metrics.avg_duration_minutes} мин` : '-';
+            document.getElementById('unique-aircraft').textContent = metrics.unique_aircraft || 0;
+            document.getElementById('unique-operators').textContent = metrics.unique_operators || 0;
+        }
+
+        function updateTopRegions(regions) {
+            const container = document.getElementById('top-regions');
+            if (regions.length === 0) {
+                container.innerHTML = '<div class="metric"><span>Нет данных</span><span>-</span></div>';
+                return;
+            }
+
+            container.innerHTML = regions.slice(0, 5).map((region, index) => `
+                <div class="metric">
+                    <span>${index + 1}. ${region.region_name}</span>
+                    <span class="metric-value">${region.total_flights}</span>
+                </div>
+            `).join('');
+        }
+
+        function updateAircraftTypes(types) {
+            const container = document.getElementById('aircraft-types');
+            const typeEntries = Object.entries(types).slice(0, 5);
+            
+            if (typeEntries.length === 0) {
+                container.innerHTML = '<div class="metric"><span>Нет данных</span><span>-</span></div>';
+                return;
+            }
+
+            container.innerHTML = typeEntries.map(([type, count]) => `
+                <div class="metric">
+                    <span>${type || 'Неизвестно'}</span>
+                    <span class="metric-value">${count}</span>
+                </div>
+            `).join('');
+        }
+    </script>
+</body>
+</html>
