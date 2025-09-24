@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  bvs-analytics:
+    build: .
+    container_name: bvs-analytics
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/uploads:/app/uploads
+      - ./backend/logs:/app/logs
+      - ./backend/bvs_analytics.db:/app/bvs_analytics.db
+      - ./backend/.env:/app/.env
+    environment:
+      - PYTHONUNBUFFERED=1
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
