@@ -6,7 +6,7 @@ import sys
 from contextlib import asynccontextmanager
 
 from .core.config import settings
-from .core.database import engine, Base
+from .core.database import engine, Base, init_database
 from .api.flights import router as flights_router
 
 # Настройка логирования
@@ -27,16 +27,13 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting BVS Analytics API...")
     
-    # Создаем таблицы в БД
+    # Инициализируем базу данных с поддержкой формата 2025.xlsx
     try:
-        Base.metadata.create_all(bind=engine)
-        logger.info("Database tables created successfully")
+        init_database()
+        logger.info("Database initialized successfully with 2025.xlsx support")
     except Exception as e:
-        logger.error(f"Failed to create database tables: {e}")
+        logger.error(f"Failed to initialize database: {e}")
         raise
-    
-    # Инициализируем базовые данные
-    await initialize_base_data()
     
     yield
     
@@ -101,51 +98,7 @@ async def global_exception_handler(request, exc):
         }
     )
 
-async def initialize_base_data():
-    """Инициализация базовых данных"""
-    from .core.database import SessionLocal
-    from .models.flight import Region
-    
-    db = SessionLocal()
-    try:
-        # Проверяем, есть ли уже регионы в БД
-        existing_regions = db.query(Region).count()
-        
-        if existing_regions == 0:
-            logger.info("Initializing base regions data...")
-            
-            # Базовые регионы РФ с примерными площадями
-            base_regions = [
-                {"name": "Московская область", "code": "MOW", "area_km2": 44329},
-                {"name": "Санкт-Петербург", "code": "SPB", "area_km2": 1439},
-                {"name": "Калининградская область", "code": "KGD", "area_km2": 15125},
-                {"name": "Ростовская область", "code": "ROS", "area_km2": 100967},
-                {"name": "Самарская область", "code": "SAM", "area_km2": 53565},
-                {"name": "Свердловская область", "code": "SVE", "area_km2": 194307},
-                {"name": "Тюменская область", "code": "TYU", "area_km2": 161235},
-                {"name": "Новосибирская область", "code": "NSK", "area_km2": 177756},
-                {"name": "Красноярский край", "code": "KRS", "area_km2": 2366797},
-                {"name": "Иркутская область", "code": "IRK", "area_km2": 767900},
-                {"name": "Республика Саха (Якутия)", "code": "YAK", "area_km2": 3083523},
-                {"name": "Магаданская область", "code": "MAG", "area_km2": 462464},
-                {"name": "Хабаровский край", "code": "KHB", "area_km2": 787633},
-                {"name": "Республика Крым", "code": "CRM", "area_km2": 27000},
-            ]
-            
-            for region_data in base_regions:
-                region = Region(**region_data)
-                db.add(region)
-            
-            db.commit()
-            logger.info(f"Initialized {len(base_regions)} base regions")
-        else:
-            logger.info(f"Found {existing_regions} existing regions in database")
-            
-    except Exception as e:
-        logger.error(f"Failed to initialize base data: {e}")
-        db.rollback()
-    finally:
-        db.close()
+# Функция initialize_base_data удалена - теперь используется init_database() из database.py
 
 if __name__ == "__main__":
     import uvicorn

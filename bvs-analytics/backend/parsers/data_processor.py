@@ -83,7 +83,9 @@ class DataProcessor:
         logger.info(f"Columns: {list(df.columns)}")
         
         # Определяем формат листа по колонкам
-        if self._is_shr_dep_arr_format(df):
+        if self._is_2025_format(df):
+            flights = self._process_2025_format(df, sheet_name)
+        elif self._is_shr_dep_arr_format(df):
             flights = self._process_shr_dep_arr_format(df, region_name)
         elif self._is_detailed_format(df):
             flights = self._process_detailed_format(df, region_name)
@@ -108,6 +110,16 @@ class DataProcessor:
         """Проверяет, является ли лист агрегированным форматом"""
         columns = [col.lower() for col in df.columns]
         return any('центр' in col for col in columns)
+    
+    def _is_2025_format(self, df: pd.DataFrame) -> bool:
+        """Проверяет, является ли лист форматом 2025.xlsx"""
+        columns = [col for col in df.columns]
+        # Формат 2025: ['Центр ЕС ОрВД', 'SHR', 'DEP', 'ARR']
+        return (len(columns) == 4 and
+                'Центр ЕС ОрВД' in columns and
+                'SHR' in columns and
+                'DEP' in columns and
+                'ARR' in columns)
     
     def _process_shr_dep_arr_format(self, df: pd.DataFrame, region_name: str) -> List[Dict[str, Any]]:
         """Обрабатывает формат с колонками SHR/DEP/ARR"""
@@ -212,6 +224,41 @@ class DataProcessor:
         
         return flights
     
+    def _process_2025_format(self, df: pd.DataFrame, sheet_name: str) -> List[Dict[str, Any]]:
+        """Обрабатывает формат 2025.xlsx с колонками ['Центр ЕС ОрВД', 'SHR', 'DEP', 'ARR']"""
+        flights = []
+        
+        logger.info(f"Processing 2025 format sheet '{sheet_name}' with {len(df)} rows")
+        
+        for idx, row in df.iterrows():
+            try:
+                center_name = str(row.get('Центр ЕС ОрВД', '')).strip()
+                shr_msg = self._clean_message(row.get('SHR', ''))
+                dep_msg = self._clean_message(row.get('DEP', ''))
+                arr_msg = self._clean_message(row.get('ARR', ''))
+                
+                # Пропускаем пустые строки
+                if not shr_msg or not center_name:
+                    continue
+                
+                # Парсим сообщения с помощью улучшенного парсера
+                flight_data = self.parser.parse_flight_messages_2025(shr_msg, dep_msg, arr_msg)
+                
+                if 'error' not in flight_data:
+                    # Добавляем информацию о центре
+                    flight_data['region_name'] = center_name
+                    flight_data['source_sheet'] = sheet_name
+                    flight_data['center_name'] = center_name
+                    flights.append(flight_data)
+                else:
+                    logger.warning(f"Failed to parse 2025 flight in row {idx}: {flight_data['error']}")
+                    
+            except Exception as e:
+                logger.error(f"Error processing 2025 format row {idx}: {e}")
+        
+        logger.info(f"Successfully processed {len(flights)} flights from 2025 format")
+        return flights
+    
     def _clean_message(self, message: Any) -> str:
         """Очищает сообщение от лишних символов"""
         if pd.isna(message) or message is None:
@@ -248,6 +295,8 @@ class DataProcessor:
     
     def create_flight_record(self, flight_data: Dict[str, Any]) -> Dict[str, Any]:
         """Создает запись полета для сохранения в БД"""
+        import json
+        
         record = {
             'flight_id': flight_data.get('flight_id'),
             'registration': flight_data.get('registration'),
@@ -257,7 +306,10 @@ class DataProcessor:
             'raw_shr_message': flight_data.get('raw_shr_message'),
             'raw_dep_message': flight_data.get('raw_dep_message'),
             'raw_arr_message': flight_data.get('raw_arr_message'),
-            'remarks': flight_data.get('remarks')
+            'remarks': flight_data.get('remarks'),
+            'center_name': flight_data.get('center_name'),
+            'source_sheet': flight_data.get('source_sheet'),
+            'data_format': '2025' if flight_data.get('center_name') else '2024'
         }
         
         # Обрабатываем координаты
@@ -276,10 +328,27 @@ class DataProcessor:
         if 'departure_datetime' in flight_data:
             record['departure_time'] = flight_data['departure_datetime']
         
+        if 'actual_departure_datetime' in flight_data:
+            record['actual_departure_time'] = flight_data['actual_departure_datetime']
+        
         if 'arrival_datetime' in flight_data:
             record['arrival_time'] = flight_data['arrival_datetime']
         
+        if 'actual_arrival_datetime' in flight_data:
+            record['actual_arrival_time'] = flight_data['actual_arrival_datetime']
+        
         if 'duration_minutes' in flight_data:
             record['duration_minutes'] = flight_data['duration_minutes']
+        
+        # Обрабатываем высоты (новые поля для 2025.xlsx)
+        if 'min_altitude' in flight_data:
+            record['min_altitude'] = flight_data['min_altitude']
+        
+        if 'max_altitude' in flight_data:
+            record['max_altitude'] = flight_data['max_altitude']
+        
+        # Обрабатываем контактные данные
+        if 'phone_numbers' in flight_data and flight_data['phone_numbers']:
+            record['phone_numbers'] = json.dumps(flight_data['phone_numbers'], ensure_ascii=False)
         
         return record

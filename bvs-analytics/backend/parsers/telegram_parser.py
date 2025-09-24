@@ -246,3 +246,208 @@ class TelegramParser:
         result['raw_arr_message'] = arr_msg
         
         return result
+    
+    def parse_flight_messages_2025(self, shr_msg: str, dep_msg: str = None, arr_msg: str = None) -> Dict[str, Any]:
+        """Парсит сообщения полета в формате 2025.xlsx и объединяет данные"""
+        result = {}
+        
+        # Парсим SHR сообщение (основное) с улучшенными паттернами для 2025
+        if shr_msg and isinstance(shr_msg, str) and shr_msg.strip():
+            shr_data = self.parse_shr_message_2025(shr_msg)
+            result.update(shr_data)
+        
+        # Парсим DEP сообщение
+        if dep_msg and isinstance(dep_msg, str) and dep_msg.strip():
+            dep_data = self.parse_dep_message_2025(dep_msg)
+            # Обновляем время вылета если есть в DEP
+            if 'departure_datetime' in dep_data:
+                result['actual_departure_datetime'] = dep_data['departure_datetime']
+            if 'departure_time' in dep_data:
+                result['actual_departure_time'] = dep_data['departure_time']
+        
+        # Парсим ARR сообщение
+        if arr_msg and isinstance(arr_msg, str) and arr_msg.strip():
+            arr_data = self.parse_arr_message_2025(arr_msg)
+            if 'arrival_datetime' in arr_data:
+                result['arrival_datetime'] = arr_data['arrival_datetime']
+            if 'arrival_time' in arr_data:
+                result['arrival_time'] = arr_data['arrival_time']
+        
+        # Вычисляем длительность полета
+        departure_dt = result.get('actual_departure_datetime') or result.get('departure_datetime')
+        arrival_dt = result.get('arrival_datetime')
+        
+        if departure_dt and arrival_dt:
+            result['duration_minutes'] = self.calculate_duration(departure_dt, arrival_dt)
+        
+        # Сохраняем исходные сообщения
+        result['raw_shr_message'] = shr_msg
+        result['raw_dep_message'] = dep_msg
+        result['raw_arr_message'] = arr_msg
+        
+        return result
+    
+    def parse_shr_message_2025(self, message: str) -> Dict[str, Any]:
+        """Парсит SHR сообщение в формате 2025.xlsx"""
+        try:
+            result = {
+                'message_type': 'SHR',
+                'raw_message': message.strip()
+            }
+            
+            # Извлекаем flight_id из SHR-XXXXX
+            flight_id_match = re.search(r'SHR-([A-Z0-9]+)', message)
+            if flight_id_match:
+                result['flight_id'] = flight_id_match.group(1)
+            
+            # Извлекаем регистрационный номер
+            result['registration'] = self._extract_registration(message)
+            
+            # Извлекаем тип ВС
+            result['aircraft_type'] = self._extract_aircraft_type(message)
+            
+            # Извлекаем оператора (улучшенный паттерн для 2025)
+            result['operator'] = self._extract_operator_2025(message)
+            
+            # Извлекаем координаты
+            result['departure_coords'] = self._extract_coordinates(message, 'DEP')
+            result['destination_coords'] = self._extract_coordinates(message, 'DEST')
+            
+            # Извлекаем дату
+            result['flight_date'] = self._extract_date(message)
+            
+            # Извлекаем время вылета
+            result['departure_time'] = self._extract_departure_time(message)
+            
+            # Извлекаем высоты полета
+            altitude_match = re.search(r'M(\d{4})/M(\d{4})', message)
+            if altitude_match:
+                result['min_altitude'] = int(altitude_match.group(1))
+                result['max_altitude'] = int(altitude_match.group(2))
+            
+            # Извлекаем SID
+            result['sid'] = self._extract_sid(message)
+            
+            # Извлекаем контактные данные
+            phone_numbers = re.findall(r'\+?[78][\d\s\-\(\)]{10,}', message)
+            if phone_numbers:
+                result['phone_numbers'] = phone_numbers
+            
+            # Вычисляем datetime для вылета
+            if result.get('flight_date') and result.get('departure_time'):
+                result['departure_datetime'] = self._combine_date_time(
+                    result['flight_date'], result['departure_time']
+                )
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error parsing 2025 SHR message: {e}")
+            return {'error': str(e), 'raw_message': message}
+    
+    def parse_dep_message_2025(self, message: str) -> Dict[str, Any]:
+        """Парсит DEP сообщение в формате 2025.xlsx"""
+        try:
+            result = {
+                'message_type': 'DEP',
+                'raw_message': message.strip()
+            }
+            
+            # Извлекаем время вылета из DEP сообщения
+            # Паттерн: -ATD 0705 или -ZZZZ0705
+            dep_time_patterns = [
+                r'-ATD\s+(\d{4})',
+                r'-ZZZZ(\d{4})',
+                r'ATD\s+(\d{4})'
+            ]
+            
+            for pattern in dep_time_patterns:
+                match = re.search(pattern, message)
+                if match:
+                    time_str = match.group(1)
+                    hours = time_str[:2]
+                    minutes = time_str[2:4]
+                    result['departure_time'] = f"{hours}:{minutes}"
+                    break
+            
+            # Извлекаем дату
+            result['flight_date'] = self._extract_date(message)
+            
+            # Извлекаем SID
+            result['sid'] = self._extract_sid(message)
+            
+            # Вычисляем datetime
+            if result.get('flight_date') and result.get('departure_time'):
+                result['departure_datetime'] = self._combine_date_time(
+                    result['flight_date'], result['departure_time']
+                )
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error parsing 2025 DEP message: {e}")
+            return {'error': str(e), 'raw_message': message}
+    
+    def parse_arr_message_2025(self, message: str) -> Dict[str, Any]:
+        """Парсит ARR сообщение в формате 2025.xlsx"""
+        try:
+            result = {
+                'message_type': 'ARR',
+                'raw_message': message.strip()
+            }
+            
+            # Извлекаем время посадки из ARR сообщения
+            # Паттерн: -ATA 1250 или подобные
+            arr_time_patterns = [
+                r'-ATA\s+(\d{4})',
+                r'ATA\s+(\d{4})',
+                r'-ZZZZ(\d{4})'
+            ]
+            
+            for pattern in arr_time_patterns:
+                match = re.search(pattern, message)
+                if match:
+                    time_str = match.group(1)
+                    hours = time_str[:2]
+                    minutes = time_str[2:4]
+                    result['arrival_time'] = f"{hours}:{minutes}"
+                    break
+            
+            # Извлекаем дату
+            result['flight_date'] = self._extract_date(message)
+            
+            # Извлекаем SID
+            result['sid'] = self._extract_sid(message)
+            
+            # Вычисляем datetime
+            if result.get('flight_date') and result.get('arrival_time'):
+                result['arrival_datetime'] = self._combine_date_time(
+                    result['flight_date'], result['arrival_time']
+                )
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error parsing 2025 ARR message: {e}")
+            return {'error': str(e), 'raw_message': message}
+    
+    def _extract_operator_2025(self, message: str) -> Optional[str]:
+        """Извлекает оператора с улучшенными паттернами для 2025"""
+        # Паттерны для извлечения оператора в формате 2025
+        patterns = [
+            r'OPR/([^/\n\r]+?)(?=\s+REG/|\s+TYP/|\s+RMK/|\s+STS/|\s+SID/|$)',
+            r'OPR/([^/\n\r]+?)(?=\s+[A-Z]{3}/)',
+            r'OPR/([^\n\r]+?)(?=\n|\r|$)'
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, message, re.MULTILINE | re.DOTALL)
+            if match:
+                operator = match.group(1).strip()
+                # Очищаем от лишних символов и пробелов
+                operator = re.sub(r'\s+', ' ', operator)
+                # Удаляем технические коды в конце
+                operator = re.sub(r'\s+[A-Z0-9\-]{6,}$', '', operator)
+                return operator
+        
+        return None

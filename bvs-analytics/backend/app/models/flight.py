@@ -39,7 +39,16 @@ class Flight(Base):
     
     departure_time = Column(DateTime(timezone=True))
     arrival_time = Column(DateTime(timezone=True))
+    actual_departure_time = Column(DateTime(timezone=True))  # Фактическое время вылета
+    actual_arrival_time = Column(DateTime(timezone=True))    # Фактическое время посадки
     duration_minutes = Column(Integer)  # Длительность в минутах
+    
+    # Высоты полета (новые поля для 2025.xlsx)
+    min_altitude = Column(Integer)  # Минимальная высота в метрах
+    max_altitude = Column(Integer)  # Максимальная высота в метрах
+    
+    # Центр ЕС ОрВД (для формата 2025.xlsx)
+    center_name = Column(String(100), index=True)
     
     region_id = Column(Integer, ForeignKey('regions.id'), index=True)
     region = relationship("Region", back_populates="flights")
@@ -52,6 +61,11 @@ class Flight(Base):
     # Дополнительные поля
     sid = Column(String(50))  # System ID
     remarks = Column(Text)
+    phone_numbers = Column(Text)  # JSON строка с номерами телефонов
+    
+    # Метаданные
+    source_sheet = Column(String(50))  # Название листа источника
+    data_format = Column(String(20), default='2024')  # Формат данных (2024/2025)
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
