@@ -2,6 +2,12 @@ import re
 from datetime import datetime, timedelta
 from typing import Dict, List, Tuple, Optional, Any
 import logging
+import sys
+import os
+
+# Добавляем путь к модулям приложения
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from app.utils.phone_normalizer import normalize_phone_number, normalize_phone_numbers
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +41,14 @@ class TelegramParser:
                 'sid': self._extract_sid(message),
                 'raw_message': message.strip()
             }
+            
+            # Извлекаем контактные данные
+            phone_numbers = re.findall(r'\+?[78][\d\s\-\(\)]{10,}', message)
+            if phone_numbers:
+                # Унифицируем телефонные номера в формат 7XXXXXXXXXX
+                normalized_phones = normalize_phone_numbers(phone_numbers)
+                if normalized_phones:
+                    result['phone_numbers'] = normalized_phones
             
             # Вычисляем datetime для вылета
             if result['flight_date'] and result['departure_time']:
@@ -331,7 +345,10 @@ class TelegramParser:
             # Извлекаем контактные данные
             phone_numbers = re.findall(r'\+?[78][\d\s\-\(\)]{10,}', message)
             if phone_numbers:
-                result['phone_numbers'] = phone_numbers
+                # Унифицируем телефонные номера в формат 7XXXXXXXXXX
+                normalized_phones = normalize_phone_numbers(phone_numbers)
+                if normalized_phones:
+                    result['phone_numbers'] = normalized_phones
             
             # Вычисляем datetime для вылета
             if result.get('flight_date') and result.get('departure_time'):

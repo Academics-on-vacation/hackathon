@@ -347,7 +347,7 @@ class DataProcessor:
         if 'max_altitude' in flight_data:
             record['max_altitude'] = flight_data['max_altitude']
         
-        # Обрабатываем контактные данные
+        # Обрабатываем контактные данные (уже унифицированные в парсере)
         if 'phone_numbers' in flight_data and flight_data['phone_numbers']:
             record['phone_numbers'] = json.dumps(flight_data['phone_numbers'], ensure_ascii=False)
         
