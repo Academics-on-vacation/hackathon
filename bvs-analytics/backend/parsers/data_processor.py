@@ -1,8 +1,14 @@
 import pandas as pd
 import re
+import os
 from typing import List, Dict, Any, Optional
 import logging
 from .telegram_parser import TelegramParser
+import sys
+
+# Добавляем путь к модулям приложения
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from app.utils.RegionLocator import RegionLocator
 
 logger = logging.getLogger(__name__)
 
@@ -11,6 +17,16 @@ class DataProcessor:
     
     def __init__(self):
         self.parser = TelegramParser()
+        
+        # Инициализируем RegionLocator с правильным путем к russia.geojson
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        geojson_path = os.path.join(current_dir, "..", "..", "data", "russia.geojson")
+        try:
+            self.region_locator = RegionLocator(geojson_path)
+            logger.info(f"RegionLocator initialized with geojson: {geojson_path}")
+        except Exception as e:
+            logger.error(f"Failed to initialize RegionLocator: {e}")
+            self.region_locator = None
         
         # Маппинг регионов из названий листов
         self.region_mapping = {
@@ -121,6 +137,45 @@ class DataProcessor:
                 'DEP' in columns and
                 'ARR' in columns)
     
+    def _enrich_with_region_data(self, flight_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Обогащает данные полета информацией о регионе из geojson"""
+        if not self.region_locator:
+            return flight_data
+        
+        # Пробуем найти регион по координатам вылета
+        coords_to_check = []
+        if 'departure_coords' in flight_data and flight_data['departure_coords']:
+            coords_to_check.append(('departure', flight_data['departure_coords']))
+        
+        if 'arrival_coords' in flight_data and flight_data['arrival_coords']:
+            coords_to_check.append(('arrival', flight_data['arrival_coords']))
+        elif 'destination_coords' in flight_data and flight_data['destination_coords']:
+            coords_to_check.append(('destination', flight_data['destination_coords']))
+        
+        # Ищем регион по первым доступным координатам
+        for coord_type, coords in coords_to_check:
+            try:
+                lat, lon = coords
+                region_info = self.region_locator.get_region(lat, lon)
+                if region_info:
+                    # Добавляем информацию о регионе
+                    flight_data[f'{coord_type}_region_cartodb_id'] = region_info.get('cartodb_id')
+                    flight_data[f'{coord_type}_region_name_latin'] = region_info.get('name_latin')
+                    flight_data[f'{coord_type}_region_name'] = region_info.get('name')
+                    
+                    # Если это первый найденный регион, добавляем общие поля
+                    if 'region_cartodb_id' not in flight_data:
+                        flight_data['region_cartodb_id'] = region_info.get('cartodb_id')
+                        flight_data['region_name_latin'] = region_info.get('name_latin')
+                    
+                    logger.debug(f"Found region for {coord_type} coords ({lat}, {lon}): {region_info.get('name')} (cartodb_id: {region_info.get('cartodb_id')})")
+                    break
+            except Exception as e:
+                logger.debug(f"Error finding region for {coord_type} coords: {e}")
+                continue
+        
+        return flight_data
+    
     def _process_shr_dep_arr_format(self, df: pd.DataFrame, region_name: str) -> List[Dict[str, Any]]:
         """Обрабатывает формат с колонками SHR/DEP/ARR"""
         flights = []
@@ -142,6 +197,10 @@ class DataProcessor:
                 if 'error' not in flight_data:
                     flight_data['region_name'] = region_name
                     flight_data['source_sheet'] = region_name
+                    
+                    # Обогащаем данными о регионе из geojson
+                    flight_data = self._enrich_with_region_data(flight_data)
+                    
                     flights.append(flight_data)
                 else:
                     logger.warning(f"Failed to parse flight in row {idx}: {flight_data['error']}")
@@ -191,6 +250,9 @@ class DataProcessor:
                 flight_data['raw_route'] = route_text
                 flight_data['eet'] = str(row.get('EET', ''))
                 
+                # Обогащаем данными о регионе из geojson
+                flight_data = self._enrich_with_region_data(flight_data)
+                
                 flights.append(flight_data)
                 
             except Exception as e:
@@ -217,6 +279,10 @@ class DataProcessor:
                 if 'error' not in flight_data:
                     flight_data['region_name'] = center_name
                     flight_data['source_sheet'] = 'Aggregated'
+                    
+                    # Обогащаем данными о регионе из geojson
+                    flight_data = self._enrich_with_region_data(flight_data)
+                    
                     flights.append(flight_data)
                     
             except Exception as e:
@@ -249,6 +315,10 @@ class DataProcessor:
                     flight_data['region_name'] = center_name
                     flight_data['source_sheet'] = sheet_name
                     flight_data['center_name'] = center_name
+                    
+                    # Обогащаем данными о регионе из geojson
+                    flight_data = self._enrich_with_region_data(flight_data)
+                    
                     flights.append(flight_data)
                 else:
                     logger.warning(f"Failed to parse 2025 flight in row {idx}: {flight_data['error']}")
@@ -309,7 +379,10 @@ class DataProcessor:
             'remarks': flight_data.get('remarks'),
             'center_name': flight_data.get('center_name'),
             'source_sheet': flight_data.get('source_sheet'),
-            'data_format': '2025' if flight_data.get('center_name') else '2024'
+            'data_format': '2025' if flight_data.get('center_name') else '2024',
+            # Добавляем поля региона из geojson
+            'region_cartodb_id': flight_data.get('region_cartodb_id'),
+            'region_name_latin': flight_data.get('region_name_latin')
         }
         
         # Обрабатываем координаты

@@ -50,6 +50,10 @@ class Flight(Base):
     # Центр ЕС ОрВД (для формата 2025.xlsx)
     center_name = Column(String(100), index=True)
     
+    # Дополнительные поля региона из geojson
+    region_cartodb_id = Column(Integer, index=True)  # cartodb_id из geojson
+    region_name_latin = Column(String(255))  # name_latin из geojson
+    
     region_id = Column(Integer, ForeignKey('regions.id'), index=True)
     region = relationship("Region", back_populates="flights")
     

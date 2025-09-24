@@ -25,6 +25,9 @@ class FlightBase(BaseModel):
     arrival_time: Optional[datetime] = None
     duration_minutes: Optional[int] = None
     remarks: Optional[str] = None
+    # Добавляем поля региона из geojson
+    region_cartodb_id: Optional[int] = None
+    region_name_latin: Optional[str] = None
 
 class FlightCreate(FlightBase):
     departure_lat: Optional[float] = None
