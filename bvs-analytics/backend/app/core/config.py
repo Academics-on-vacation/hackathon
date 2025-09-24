@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     DESCRIPTION: str = "Сервис анализа полетов БВС"
     
     # Database
-    DATABASE_URL: str = "sqlite:///./bvs_analytics.db"
+    DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/bvs_analytics"
     
     # Security
     SECRET_KEY: str = "your-secret-key-change-in-production"
