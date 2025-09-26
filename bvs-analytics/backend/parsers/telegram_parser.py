@@ -21,10 +21,17 @@ class TelegramParser:
         self.date_pattern = r'DOF/(\d{6})'
         self.reg_pattern = r'REG/([A-Z0-9\-]+)'
         self.typ_pattern = r'TYP/([A-Z0-9]+)'
-        self.opr_pattern = r'OPR/([^\\n\r]+?)(?=\s+REG/|\s+TYP/|\s+RMK/|$)'
+        # Улучшенный паттерн для оператора - учитывает переносы строк
+        self.opr_pattern = r'OPR/([^¶\n\r]+?)(?=\s+REG/|\s+TYP/|\s+RMK/|\s+SID/|¶|$)'
         self.sid_pattern = r'SID/(\d+)'
-        self.dep_coord_pattern = r'DEP/(\d{4,6}[NS]\d{5,7}[EW])'
-        self.dest_coord_pattern = r'DEST/(\d{4,6}[NS]\d{5,7}[EW])'
+        # Улучшенные паттерны для координат
+        self.dep_coord_pattern = r'DEP/((\d{4}|\d{6})([NS])(\d{5}|\d{7})([EW]))'
+        self.dest_coord_pattern = r'DEST/((\d{4}|\d{6})([NS])(\d{5}|\d{7})([EW]))'
+        # Новые паттерны для улучшенного парсинга
+        self.adepz_pattern = r'ADEPZ\s+((\d{4}|\d{6})([NS])(\d{5}|\d{7})([EW]))'
+        self.adarrz_pattern = r'ADARRZ\s+((\d{4}|\d{6})([NS])(\d{5}|\d{7})([EW]))'
+        self.zona_coord_pattern = r'ZONA.*?((\d{4}|\d{6})([NS])(\d{5}|\d{7})([EW]))'
+        self.takeoff_landing_pattern = r'ВЗЛЕТ И ПОСАДКА\s+((\d{4}|\d{6})([NS])(\d{5}|\d{7})([EW]))'
     
     def parse_shr_message(self, message: str) -> Dict[str, Any]:
         """Парсит SHR сообщение (план полета)"""
@@ -75,6 +82,20 @@ class TelegramParser:
                 'raw_message': message.strip()
             }
             
+            # Пробуем извлечь координаты из ADEPZ если DEP не найден
+            if not result['departure_coords']:
+                result['departure_coords'] = self._extract_adepz_coordinates(message)
+            
+            # Извлекаем координаты из ZONA если есть
+            zona_coords = self._extract_zona_coordinates(message)
+            if zona_coords and not result['departure_coords']:
+                result['departure_coords'] = zona_coords
+            
+            # Извлекаем координаты из ВЗЛЕТ И ПОСАДКА если есть
+            takeoff_coords = self._extract_takeoff_landing_coordinates(message)
+            if takeoff_coords and not result['departure_coords']:
+                result['departure_coords'] = takeoff_coords
+            
             if result['flight_date'] and result['departure_time']:
                 result['departure_datetime'] = self._combine_date_time(
                     result['flight_date'], result['departure_time']
@@ -103,6 +124,20 @@ class TelegramParser:
                 'raw_message': message.strip()
             }
             
+            # Пробуем извлечь координаты из ADARRZ если DEST не найден
+            if not result['destination_coords']:
+                result['destination_coords'] = self._extract_adarrz_coordinates(message)
+            
+            # Извлекаем координаты из ZONA если есть
+            zona_coords = self._extract_zona_coordinates(message)
+            if zona_coords and not result['destination_coords']:
+                result['destination_coords'] = zona_coords
+            
+            # Извлекаем координаты из ВЗЛЕТ И ПОСАДКА если есть
+            landing_coords = self._extract_takeoff_landing_coordinates(message)
+            if landing_coords and not result['destination_coords']:
+                result['destination_coords'] = landing_coords
+            
             if result['flight_date'] and result['arrival_time']:
                 result['arrival_datetime'] = self._combine_date_time(
                     result['flight_date'], result['arrival_time']
@@ -116,10 +151,43 @@ class TelegramParser:
     
     def _extract_coordinates(self, message: str, coord_type: str) -> Optional[Tuple[float, float]]:
         """Извлекает координаты из сообщения"""
-        pattern = f'{coord_type}/(\d{{4,6}}[NS]\d{{5,7}}[EW])'
+        pattern = f'{coord_type}/((\d{{4}}|\d{{6}})([NS])(\d{{5}}|\d{{7}})([EW]))'
         match = re.search(pattern, message)
         if match:
-            return self._parse_coordinates(match.group(1))
+            coord_str = match.group(1)
+            return self._parse_coordinates(coord_str)
+        return None
+    
+    def _extract_adepz_coordinates(self, message: str) -> Optional[Tuple[float, float]]:
+        """Извлекает координаты ADEPZ из DEP сообщения"""
+        match = re.search(self.adepz_pattern, message)
+        if match:
+            coord_str = match.group(1)
+            return self._parse_coordinates(coord_str)
+        return None
+    
+    def _extract_adarrz_coordinates(self, message: str) -> Optional[Tuple[float, float]]:
+        """Извлекает координаты ADARRZ из ARR сообщения"""
+        match = re.search(self.adarrz_pattern, message)
+        if match:
+            coord_str = match.group(1)
+            return self._parse_coordinates(coord_str)
+        return None
+    
+    def _extract_zona_coordinates(self, message: str) -> Optional[Tuple[float, float]]:
+        """Извлекает координаты из ZONA"""
+        match = re.search(self.zona_coord_pattern, message)
+        if match:
+            coord_str = match.group(1)
+            return self._parse_coordinates(coord_str)
+        return None
+    
+    def _extract_takeoff_landing_coordinates(self, message: str) -> Optional[Tuple[float, float]]:
+        """Извлекает координаты из поля ВЗЛЕТ И ПОСАДКА"""
+        match = re.search(self.takeoff_landing_pattern, message)
+        if match:
+            coord_str = match.group(1)
+            return self._parse_coordinates(coord_str)
         return None
     
     def _parse_coordinates(self, coord_str: str) -> Tuple[float, float]:
@@ -167,12 +235,32 @@ class TelegramParser:
     
     def _extract_operator(self, message: str) -> Optional[str]:
         """Извлекает оператора"""
-        match = re.search(self.opr_pattern, message)
-        if match:
-            operator = match.group(1).strip()
-            # Очищаем от лишних символов
-            operator = re.sub(r'\s+', ' ', operator)
-            return operator
+        # Заменяем символы переноса строк на пробелы для лучшего парсинга
+        clean_message = message.replace('¶', ' ').replace('\n', ' ').replace('\r', ' ')
+        
+        # Улучшенные паттерны для извлечения оператора
+        patterns = [
+            # Основной паттерн - до REG/, TYP/, RMK/, SID/ или конца строки
+            r'OPR/([^¶\n\r]+?)(?:\s+REG/|\s+TYP/|\s+RMK/|\s+SID/|¶|$)',
+            # Паттерн для случаев с переносами строк
+            r'OPR/([^/]+?)(?:\s+[A-Z]{3}/)',
+            # Паттерн до следующего поля или конца
+            r'OPR/([^\n\r]+?)(?=\n|\r|$)'
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, clean_message, re.MULTILINE | re.DOTALL)
+            if match:
+                operator = match.group(1).strip()
+                # Очищаем от лишних символов и нормализуем пробелы
+                operator = re.sub(r'\s+', ' ', operator)
+                # Удаляем технические коды в конце (номера телефонов, коды регистрации)
+                operator = re.sub(r'\s+\+?\d{10,}.*$', '', operator)
+                operator = re.sub(r'\s+[A-Z0-9\-]{6,}$', '', operator)
+                # Удаляем цифры в конце (например, "4" в "АЛЕКСАНДРОВИ4")
+                operator = re.sub(r'\d+$', '', operator)
+                return operator.strip()
+        
         return None
     
     def _extract_date(self, message: str) -> Optional[str]:
@@ -393,6 +481,9 @@ class TelegramParser:
             # Извлекаем SID
             result['sid'] = self._extract_sid(message)
             
+            # Пробуем извлечь координаты из ADEPZ если нет других
+            result['departure_coords'] = self._extract_adepz_coordinates(message)
+            
             # Вычисляем datetime
             if result.get('flight_date') and result.get('departure_time'):
                 result['departure_datetime'] = self._combine_date_time(
@@ -435,6 +526,9 @@ class TelegramParser:
             
             # Извлекаем SID
             result['sid'] = self._extract_sid(message)
+            
+            # Пробуем извлечь координаты из ADARRZ если нет других
+            result['destination_coords'] = self._extract_adarrz_coordinates(message)
             
             # Вычисляем datetime
             if result.get('flight_date') and result.get('arrival_time'):
