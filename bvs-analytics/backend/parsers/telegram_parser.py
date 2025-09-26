@@ -239,13 +239,18 @@ class TelegramParser:
         clean_message = message.replace('¶', ' ').replace('\n', ' ').replace('\r', ' ')
         
         # Улучшенные паттерны для извлечения оператора
+        # Используем DOTALL чтобы . соответствовал переносам строк
         patterns = [
-            # Основной паттерн - до REG/, TYP/, RMK/, SID/ или конца строки
-            r'OPR/([^¶\n\r]+?)(?:\s+REG/|\s+TYP/|\s+RMK/|\s+SID/|¶|$)',
-            # Паттерн для случаев с переносами строк
-            r'OPR/([^/]+?)(?:\s+[A-Z]{3}/)',
-            # Паттерн до следующего поля или конца
-            r'OPR/([^\n\r]+?)(?=\n|\r|$)'
+            # Основной паттерн - захватываем все до REG/ (включая переносы строк)
+            r'OPR/(.+?)(?=\s+REG/)',
+            # Паттерн до TYP/ если REG/ нет
+            r'OPR/(.+?)(?=\s+TYP/)',
+            # Паттерн до RMK/ если REG/ и TYP/ нет
+            r'OPR/(.+?)(?=\s+RMK/)',
+            # Паттерн до SID/ если другие поля отсутствуют
+            r'OPR/(.+?)(?=\s+SID/)',
+            # Паттерн до конца сообщения
+            r'OPR/(.+?)(?=\s*\)?\s*$)'
         ]
         
         for pattern in patterns:
@@ -257,8 +262,7 @@ class TelegramParser:
                 # Удаляем технические коды в конце (номера телефонов, коды регистрации)
                 operator = re.sub(r'\s+\+?\d{10,}.*$', '', operator)
                 operator = re.sub(r'\s+[A-Z0-9\-]{6,}$', '', operator)
-                # Удаляем цифры в конце (например, "4" в "АЛЕКСАНДРОВИ4")
-                operator = re.sub(r'\d+$', '', operator)
+                # НЕ удаляем одиночные цифры в конце, так как они могут быть частью имени
                 return operator.strip()
         
         return None
@@ -408,8 +412,8 @@ class TelegramParser:
             # Извлекаем тип ВС
             result['aircraft_type'] = self._extract_aircraft_type(message)
             
-            # Извлекаем оператора (улучшенный паттерн для 2025)
-            result['operator'] = self._extract_operator_2025(message)
+            # Извлекаем оператора (используем улучшенный общий метод)
+            result['operator'] = self._extract_operator(message)
             
             # Извлекаем координаты
             result['departure_coords'] = self._extract_coordinates(message, 'DEP')
