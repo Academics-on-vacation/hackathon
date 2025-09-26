@@ -11,7 +11,8 @@ class Settings(BaseSettings):
     
     # Database
     DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/bvs_analytics"
-    
+    # DATABASE_URL: str = "sqlite:///./bvs_analytics.db"
+
     # Security
     SECRET_KEY: str = "your-secret-key-change-in-production"
     ALGORITHM: str = "HS256"
