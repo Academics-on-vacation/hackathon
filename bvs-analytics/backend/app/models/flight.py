@@ -25,7 +25,7 @@ class Flight(Base):
     flight_id = Column(String(50), index=True)
     registration = Column(String(50), index=True)
     aircraft_type = Column(String(50), index=True)
-    operator = Column(String(255))
+    operator = Column(Text)
     
     # Координаты как отдельные поля для SQLite
     departure_lat = Column(Float)
