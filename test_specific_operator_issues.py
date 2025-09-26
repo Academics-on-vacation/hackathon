@@ -115,5 +115,73 @@ def test_specific_issues():
     operator2 = parser._extract_operator(msg2)
     print(f"Результат: '{operator2}'")
 
+    print("\n" + "="*50)
+    print("Тест 3: ГАНОУ КО ЦРСК")
+    
+    # Новое проблемное сообщение 3
+    msg3 = """(SHR-ZZZZZ
+-ZZZZ0500
+-M0000/M0030 /ZONA R001 5519N06240E/
+-ZZZZ0800
+-DEP/5519N06240E DEST/5519N06240E DOF/250423 EET/USSS0001 OPR/ГАНОУ
+КО ЦРСК TYP/4BLA RMK/ВАРФОЛОМЕЕВА ЕКАТЕРИНА ВЛАДИМИРОВНА ТЕЛ.
+89125294820 МР061425 SID/7772479636)"""
+
+    print("Исходное сообщение:")
+    print(repr(msg3))
+    print()
+    
+    # Очищаем сообщение
+    clean_msg3 = msg3.replace('\n', ' ').replace('\r', ' ')
+    print("Очищенное сообщение:")
+    print(repr(clean_msg3))
+    print()
+    
+    # Ищем OPR/ часть
+    opr_start = clean_msg3.find('OPR/')
+    if opr_start != -1:
+        opr_part = clean_msg3[opr_start:opr_start+100]
+        print(f"OPR/ часть: {repr(opr_part)}")
+    
+    # Тестируем текущий парсер
+    print(f"\nТекущий парсер:")
+    operator3 = parser._extract_operator(msg3)
+    print(f"Результат: '{operator3}' (ожидается: 'ГАНОУ КО ЦРСК')")
+
+    print("\n" + "="*50)
+    print("Тест 4: МИРКИН ЯРОСЛАВ ВЛАДИМИРОВИ4")
+    
+    # Новое проблемное сообщение 4
+    msg4 = """(SHR-ZZZZZ
+-ZZZZ0300
+-M0050/M0065 /ZONA 5512N06748E 5518N06746E 5521N06820E 5515N06822E
+5512N06748E/
+-ZZZZ1000
+-DEP/5518N06819E DEST/5518N06819E DOF/250409 EET/USSS0001 OPR/МИРКИН
+ЯРОСЛАВ ВЛАДИМИРОВИ4 REG/K059096 TYP/BLA RMK/МР061272 АКТАБАН
+РАЗРЕШЕНИЕ АДМ.ПЕТУХОВСКОГО H 01/25 ОТ 27.03.2025 УФСБ КУРГАНСКОЙ
+ОБЛ.99/3/1-1853 ОТ11.02.2025 89630805910 SID/7772447871)"""
+
+    print("Исходное сообщение:")
+    print(repr(msg4))
+    print()
+    
+    # Очищаем сообщение
+    clean_msg4 = msg4.replace('\n', ' ').replace('\r', ' ')
+    print("Очищенное сообщение:")
+    print(repr(clean_msg4))
+    print()
+    
+    # Ищем OPR/ часть
+    opr_start = clean_msg4.find('OPR/')
+    if opr_start != -1:
+        opr_part = clean_msg4[opr_start:opr_start+100]
+        print(f"OPR/ часть: {repr(opr_part)}")
+    
+    # Тестируем текущий парсер
+    print(f"\nТекущий парсер:")
+    operator4 = parser._extract_operator(msg4)
+    print(f"Результат: '{operator4}' (ожидается: 'МИРКИН ЯРОСЛАВ ВЛАДИМИРОВИ4')")
+
 if __name__ == "__main__":
     test_specific_issues()
