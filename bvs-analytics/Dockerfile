@@ -19,8 +19,11 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Копируем код приложения
 COPY backend/ .
 
+# Копируем файл russia.geojson
+COPY data/russia.geojson /app/data/russia.geojson
+
 # Создаем необходимые директории
-RUN mkdir -p uploads logs
+RUN mkdir -p uploads logs data
 
 # Открываем порт
 EXPOSE 8000
