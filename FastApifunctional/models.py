@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, Text, Float, DateTime, ForeignKey
 from sqlalchemy.dialects.postgresql import VARCHAR, TIMESTAMP, DOUBLE_PRECISION, JSONB
-from database import Base
+from hackathon.FastApifunctional.database import Base
 
 class Region(Base):
     __tablename__ = "regions"

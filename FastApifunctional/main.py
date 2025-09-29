@@ -1,8 +1,7 @@
-# main.py
 from fastapi import FastAPI, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
-from database import get_db
+from hackathon.FastApifunctional.database import get_db
 import uvicorn
 
 app = FastAPI(title="Flights API — Stats")
