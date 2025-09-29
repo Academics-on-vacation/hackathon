@@ -5,6 +5,7 @@ from typing import List, Dict, Any, Optional
 import logging
 from .telegram_parser import TelegramParser
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Добавляем путь к модулям приложения
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -15,8 +16,9 @@ logger = logging.getLogger(__name__)
 class DataProcessor:
     """Обработчик данных из Excel файлов"""
     
-    def __init__(self):
+    def __init__(self, max_workers: int = 4):
         self.parser = TelegramParser()
+        self.max_workers = max_workers
         
         # Инициализируем RegionLocator с правильным путем к russia.geojson
         current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -46,39 +48,55 @@ class DataProcessor:
             'Симферополь': 'Республика Крым',
             'Result_1': None  # Агрегированные данные
         }
-    
+
+    def _process_single_sheet_task(self, file_path: str, sheet_name: str):
+        """Задача для обработки одного листа в отдельном потоке."""
+        try:
+            df = pd.read_excel(file_path, sheet_name=sheet_name)
+            flights = self._process_sheet(df, sheet_name)
+            logger.info(f"Processed sheet '{sheet_name}': {len(flights)} flights")
+            return flights, None
+        except Exception as e:
+            error_msg = f"Error processing sheet '{sheet_name}': {str(e)}"
+            logger.error(error_msg)
+            return [], error_msg
+
     def process_excel_file(self, file_path: str) -> Dict[str, Any]:
-        """Обрабатывает Excel файл с данными полетов"""
+        """Обрабатывает Excel файл с данными полетов в несколько потоков."""
         try:
             excel_file = pd.ExcelFile(file_path)
             all_flights = []
             errors = []
-            processed_sheets = 0
             
-            logger.info(f"Processing Excel file: {file_path}")
-            logger.info(f"Found sheets: {excel_file.sheet_names}")
+            sheet_names_to_process = [s for s in excel_file.sheet_names if s not in ['Лист1']]
             
-            for sheet_name in excel_file.sheet_names:
-                if sheet_name in ['Лист1']:  # Пропускаем пустые листы
-                    continue
+            logger.info(f"Processing Excel file: {file_path} with {self.max_workers} workers")
+            logger.info(f"Found sheets to process: {sheet_names_to_process}")
+
+            with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+                future_to_sheet = {
+                    executor.submit(self._process_single_sheet_task, file_path, sheet_name): sheet_name
+                    for sheet_name in sheet_names_to_process
+                }
                 
-                try:
-                    df = pd.read_excel(file_path, sheet_name=sheet_name)
-                    flights = self._process_sheet(df, sheet_name)
-                    all_flights.extend(flights)
-                    processed_sheets += 1
-                    logger.info(f"Processed sheet '{sheet_name}': {len(flights)} flights")
-                    
-                except Exception as e:
-                    error_msg = f"Error processing sheet '{sheet_name}': {str(e)}"
-                    logger.error(error_msg)
-                    errors.append(error_msg)
-            
+                for future in as_completed(future_to_sheet):
+                    sheet_name = future_to_sheet[future]
+                    try:
+                        flights, error = future.result()
+                        if error:
+                            errors.append(error)
+                        else:
+                            all_flights.extend(flights)
+                    except Exception as exc:
+                        error_msg = f"Sheet '{sheet_name}' generated an exception: {exc}"
+                        logger.error(error_msg)
+                        errors.append(error_msg)
+
             return {
                 'flights': all_flights,
                 'errors': errors,
                 'total_processed': len(all_flights),
-                'sheets_processed': processed_sheets
+                'sheets_processed': len(sheet_names_to_process) - len(errors)
             }
             
         except Exception as e:
