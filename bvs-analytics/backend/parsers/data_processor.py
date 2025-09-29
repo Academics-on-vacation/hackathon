@@ -99,38 +99,17 @@ class DataProcessor:
         logger.info(f"Columns: {list(df.columns)}")
         
         # Определяем формат листа по колонкам
-        if self._is_2025_format(df):
-            flights = self._process_2025_format(df, sheet_name)
-        elif self._is_shr_dep_arr_format(df):
-            flights = self._process_shr_dep_arr_format(df, region_name)
-        elif self._is_detailed_format(df):
-            flights = self._process_detailed_format(df, region_name)
-        elif self._is_aggregated_format(df):
-            flights = self._process_aggregated_format(df, region_name)
+        if self._check_file_format(df):
+            flights = self._process_data(df, sheet_name)
         else:
             logger.warning(f"Unknown format for sheet '{sheet_name}'")
         
         return flights
-    
-    def _is_shr_dep_arr_format(self, df: pd.DataFrame) -> bool:
-        """Проверяет, является ли лист форматом SHR/DEP/ARR"""
-        columns = [col.upper() for col in df.columns]
-        return 'SHR' in columns and ('DEP' in columns or 'ARR' in columns)
-    
-    def _is_detailed_format(self, df: pd.DataFrame) -> bool:
-        """Проверяет, является ли лист детальным форматом (как Новосибирск)"""
-        columns = [col.lower() for col in df.columns]
-        return any('рейс' in col for col in columns) or any('борт' in col for col in columns)
-    
-    def _is_aggregated_format(self, df: pd.DataFrame) -> bool:
-        """Проверяет, является ли лист агрегированным форматом"""
-        columns = [col.lower() for col in df.columns]
-        return any('центр' in col for col in columns)
-    
-    def _is_2025_format(self, df: pd.DataFrame) -> bool:
-        """Проверяет, является ли лист форматом 2025.xlsx"""
+
+    def _check_file_format(self, df: pd.DataFrame) -> bool:
+        """Checks if file format is correct. Test column names."""
         columns = [col for col in df.columns]
-        # Формат 2025: ['Центр ЕС ОрВД', 'SHR', 'DEP', 'ARR']
+        # Корректный формат: ['Центр ЕС ОрВД', 'SHR', 'DEP', 'ARR']
         return (len(columns) == 4 and
                 'Центр ЕС ОрВД' in columns and
                 'SHR' in columns and
@@ -175,126 +154,11 @@ class DataProcessor:
                 continue
         
         return flight_data
-    
-    def _process_shr_dep_arr_format(self, df: pd.DataFrame, region_name: str) -> List[Dict[str, Any]]:
-        """Обрабатывает формат с колонками SHR/DEP/ARR"""
+
+    def _process_data(self, df: pd.DataFrame, sheet_name: str) -> List[Dict[str, Any]]:
+        """Обработка файла с колонками ['Центр ЕС ОрВД', 'SHR', 'DEP', 'ARR']"""
         flights = []
-        
-        for idx, row in df.iterrows():
-            try:
-                # Получаем сообщения
-                shr_msg = self._clean_message(row.get('SHR', ''))
-                dep_msg = self._clean_message(row.get('DEP', ''))
-                arr_msg = self._clean_message(row.get('ARR', ''))
-                
-                # Пропускаем пустые строки
-                if not shr_msg:
-                    continue
-                
-                # Парсим сообщения
-                flight_data = self.parser.parse_flight_messages(shr_msg, dep_msg, arr_msg)
-                
-                if 'error' not in flight_data:
-                    flight_data['region_name'] = region_name
-                    flight_data['source_sheet'] = region_name
-                    
-                    # Обогащаем данными о регионе из geojson
-                    flight_data = self._enrich_with_region_data(flight_data)
-                    
-                    flights.append(flight_data)
-                else:
-                    logger.warning(f"Failed to parse flight in row {idx}: {flight_data['error']}")
-                    
-            except Exception as e:
-                logger.error(f"Error processing row {idx}: {e}")
-        
-        return flights
-    
-    def _process_detailed_format(self, df: pd.DataFrame, region_name: str) -> List[Dict[str, Any]]:
-        """Обрабатывает детальный формат (как в Новосибирске)"""
-        flights = []
-        
-        for idx, row in df.iterrows():
-            try:
-                flight_data = {
-                    'region_name': region_name,
-                    'source_sheet': region_name,
-                    'flight_id': str(row.get('Рейс', '')),
-                    'aircraft_type': str(row.get('Тип/ группа ВС', '')),
-                    'registration': str(row.get('Борт. номер ВС.', '')),
-                    'operator': str(row.get('Владелец ВС.', '')),
-                }
-                
-                # Обрабатываем времена
-                dep_time = row.get('Время вылета.')
-                arr_time = row.get('Время посадки.')
-                
-                if pd.notna(dep_time):
-                    flight_data['departure_datetime'] = pd.to_datetime(dep_time)
-                if pd.notna(arr_time):
-                    flight_data['arrival_datetime'] = pd.to_datetime(arr_time)
-                
-                # Вычисляем длительность
-                if 'departure_datetime' in flight_data and 'arrival_datetime' in flight_data:
-                    duration = flight_data['arrival_datetime'] - flight_data['departure_datetime']
-                    flight_data['duration_minutes'] = int(duration.total_seconds() / 60)
-                
-                # Извлекаем координаты из текста маршрута
-                route_text = str(row.get('Текст исходного маршрута', ''))
-                coords = self._extract_coordinates_from_text(route_text)
-                if coords:
-                    flight_data['departure_coords'] = coords
-                    flight_data['arrival_coords'] = coords  # Обычно одинаковые для БВС
-                
-                # Дополнительные поля
-                flight_data['raw_route'] = route_text
-                flight_data['eet'] = str(row.get('EET', ''))
-                
-                # Обогащаем данными о регионе из geojson
-                flight_data = self._enrich_with_region_data(flight_data)
-                
-                flights.append(flight_data)
-                
-            except Exception as e:
-                logger.error(f"Error processing detailed row {idx}: {e}")
-        
-        return flights
-    
-    def _process_aggregated_format(self, df: pd.DataFrame, region_name: str) -> List[Dict[str, Any]]:
-        """Обрабатывает агрегированный формат"""
-        flights = []
-        
-        for idx, row in df.iterrows():
-            try:
-                center_name = str(row.get('Центр ЕС ОрВД', ''))
-                shr_msg = self._clean_message(row.get('SHR', ''))
-                dep_msg = self._clean_message(row.get('DEP', ''))
-                arr_msg = self._clean_message(row.get('ARR', ''))
-                
-                if not shr_msg:
-                    continue
-                
-                flight_data = self.parser.parse_flight_messages(shr_msg, dep_msg, arr_msg)
-                
-                if 'error' not in flight_data:
-                    flight_data['region_name'] = center_name
-                    flight_data['source_sheet'] = 'Aggregated'
-                    
-                    # Обогащаем данными о регионе из geojson
-                    flight_data = self._enrich_with_region_data(flight_data)
-                    
-                    flights.append(flight_data)
-                    
-            except Exception as e:
-                logger.error(f"Error processing aggregated row {idx}: {e}")
-        
-        return flights
-    
-    def _process_2025_format(self, df: pd.DataFrame, sheet_name: str) -> List[Dict[str, Any]]:
-        """Обрабатывает формат 2025.xlsx с колонками ['Центр ЕС ОрВД', 'SHR', 'DEP', 'ARR']"""
-        flights = []
-        
-        logger.info(f"Processing 2025 format sheet '{sheet_name}' with {len(df)} rows")
+        logger.info(f"Processing sheet '{sheet_name}' with {len(df)} rows")
         
         for idx, row in df.iterrows():
             try:
