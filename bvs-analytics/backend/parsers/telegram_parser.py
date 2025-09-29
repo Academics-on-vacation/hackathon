@@ -16,7 +16,7 @@ class TelegramParser:
     
     def __init__(self):
         # Паттерны для извлечения данных
-        self.coord_pattern = r'(\d{4,6})([NS])(\d{5,7})([EW])'
+        self.coord_pattern = r'(\d*)([NSСЮ])(\d*)([EWЗВ])'
         self.time_pattern = r'ZZZZ(\d{4})'
         self.date_pattern = r'DOF/(\d{6})'
         self.reg_pattern = r'REG/([A-Z0-9\-]+)'
