@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import pandas as pd
 import re
 import os
@@ -9,43 +11,29 @@ import sys
 # Добавляем путь к модулям приложения
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from app.utils.RegionLocator import RegionLocator
-
+from .flight_parser import FlightParser
 logger = logging.getLogger(__name__)
 
 class DataProcessor:
     """Обработчик данных из Excel файлов"""
     
     def __init__(self):
-        self.parser = TelegramParser()
-        
-        # Инициализируем RegionLocator с правильным путем к russia.geojson
+        # self.parser = TelegramParser()
+
         current_dir = os.path.dirname(os.path.abspath(__file__))
         geojson_path = os.path.join(current_dir, "..", "..", "data", "russia.geojson")
+        aerodromes_path = os.path.join(current_dir, "..", "..", "data", "aerodroms.json")
+        zones_path = os.path.join(current_dir, "..", "..", "data", "ltsa.json")
         try:
             self.region_locator = RegionLocator(geojson_path)
             logger.info(f"RegionLocator initialized with geojson: {geojson_path}")
         except Exception as e:
             logger.error(f"Failed to initialize RegionLocator: {e}")
             self.region_locator = None
-        
-        # Маппинг регионов из названий листов
-        self.region_mapping = {
-            'Москва': 'Московская область',
-            'Санкт-Петербург': 'Санкт-Петербург',
-            'Калининград': 'Калининградская область',
-            'Ростов-на-Дону': 'Ростовская область',
-            'Самара': 'Самарская область',
-            'Екатеринбург': 'Свердловская область',
-            'Тюмень': 'Тюменская область',
-            'Новосибирск': 'Новосибирская область',
-            'Красноярск': 'Красноярский край',
-            'Иркутск': 'Иркутская область',
-            'Якутск': 'Республика Саха (Якутия)',
-            'Магадан': 'Магаданская область',
-            'Хабаровск': 'Хабаровский край',
-            'Симферополь': 'Республика Крым',
-            'Result_1': None  # Агрегированные данные
-        }
+        self.parser = FlightParser(aerodromes_path, zones_path, self.region_locator)
+        # Инициализируем RegionLocator с правильным путем к russia.geojson
+
+
     
     def process_excel_file(self, file_path: str) -> Dict[str, Any]:
         """Обрабатывает Excel файл с данными полетов"""
@@ -93,8 +81,6 @@ class DataProcessor:
     def _process_sheet(self, df: pd.DataFrame, sheet_name: str) -> List[Dict[str, Any]]:
         """Обрабатывает отдельный лист Excel"""
         flights = []
-        region_name = self.region_mapping.get(sheet_name, sheet_name)
-        
         logger.info(f"Processing sheet '{sheet_name}' with {len(df)} rows")
         logger.info(f"Columns: {list(df.columns)}")
         
@@ -115,45 +101,6 @@ class DataProcessor:
                 'SHR' in columns and
                 'DEP' in columns and
                 'ARR' in columns)
-    
-    def _enrich_with_region_data(self, flight_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Обогащает данные полета информацией о регионе из geojson"""
-        if not self.region_locator:
-            return flight_data
-        
-        # Пробуем найти регион по координатам вылета
-        coords_to_check = []
-        if 'departure_coords' in flight_data and flight_data['departure_coords']:
-            coords_to_check.append(('departure', flight_data['departure_coords']))
-        
-        if 'arrival_coords' in flight_data and flight_data['arrival_coords']:
-            coords_to_check.append(('arrival', flight_data['arrival_coords']))
-        elif 'destination_coords' in flight_data and flight_data['destination_coords']:
-            coords_to_check.append(('destination', flight_data['destination_coords']))
-        
-        # Ищем регион по первым доступным координатам
-        for coord_type, coords in coords_to_check:
-            try:
-                lat, lon = coords
-                region_info = self.region_locator.get_region(lat, lon)
-                if region_info:
-                    # Добавляем информацию о регионе
-                    flight_data[f'{coord_type}_region_cartodb_id'] = region_info.get('cartodb_id')
-                    flight_data[f'{coord_type}_region_name_latin'] = region_info.get('name_latin')
-                    flight_data[f'{coord_type}_region_name'] = region_info.get('name')
-                    
-                    # Если это первый найденный регион, добавляем общие поля
-                    if 'region_cartodb_id' not in flight_data:
-                        flight_data['region_cartodb_id'] = region_info.get('cartodb_id')
-                        flight_data['region_name_latin'] = region_info.get('name_latin')
-                    
-                    logger.debug(f"Found region for {coord_type} coords ({lat}, {lon}): {region_info.get('name')} (cartodb_id: {region_info.get('cartodb_id')})")
-                    break
-            except Exception as e:
-                logger.debug(f"Error finding region for {coord_type} coords: {e}")
-                continue
-        
-        return flight_data
 
     def _process_data(self, df: pd.DataFrame, sheet_name: str) -> List[Dict[str, Any]]:
         """Обработка файла с колонками ['Центр ЕС ОрВД', 'SHR', 'DEP', 'ARR']"""
@@ -172,16 +119,15 @@ class DataProcessor:
                     continue
                 
                 # Парсим сообщения с помощью улучшенного парсера
-                flight_data = self.parser.parse_flight_messages_2025(shr_msg, dep_msg, arr_msg)
-                
+                # flight_data = self.parser.parse_flight_messages_2025(shr_msg, dep_msg, arr_msg)
+                flight_data = self.parser.parse_row(center_name, shr_msg, dep_msg, arr_msg)
+
                 if 'error' not in flight_data:
                     # Добавляем информацию о центре
-                    flight_data['region_name'] = center_name
-                    flight_data['source_sheet'] = sheet_name
                     flight_data['center_name'] = center_name
                     
                     # Обогащаем данными о регионе из geojson
-                    flight_data = self._enrich_with_region_data(flight_data)
+                    # flight_data = self._enrich_with_region_data(flight_data)
                     
                     flights.append(flight_data)
                 else:
@@ -206,86 +152,73 @@ class DataProcessor:
         
         return message
     
-    def _extract_coordinates_from_text(self, text: str) -> Optional[tuple]:
-        """Извлекает координаты из текста маршрута"""
-        try:
-            # Ищем координаты в различных форматах
-            coord_patterns = [
-                r'(\d{4}N\d{5}E)',
-                r'(\d{6}N\d{7}E)',
-                r'(\d{4,6}[NS]\d{5,7}[EW])'
-            ]
-            
-            for pattern in coord_patterns:
-                matches = re.findall(pattern, text)
-                if matches:
-                    return self.parser._parse_coordinates(matches[0])
-            
-            return None
-            
-        except Exception as e:
-            logger.debug(f"Could not extract coordinates from text: {e}")
-            return None
-    
     def create_flight_record(self, flight_data: Dict[str, Any]) -> Dict[str, Any]:
         """Создает запись полета для сохранения в БД"""
         import json
-        
         record = {
-            'flight_id': flight_data.get('flight_id'),
-            'registration': flight_data.get('registration'),
-            'aircraft_type': flight_data.get('aircraft_type'),
+            # 'flight_id': flight_data.get('flight_id'),
+            # 'registration': flight_data.get('registration'),
+            'uav_type': flight_data.get('uav_type'),
             'operator': flight_data.get('operator'),
             'sid': flight_data.get('sid'),
-            'raw_shr_message': flight_data.get('raw_shr_message'),
-            'raw_dep_message': flight_data.get('raw_dep_message'),
-            'raw_arr_message': flight_data.get('raw_arr_message'),
-            'remarks': flight_data.get('remarks'),
+            # 'raw_shr_message': flight_data.get('raw_shr_message'),
+            # 'raw_dep_message': flight_data.get('raw_dep_message'),
+            # 'raw_arr_message': flight_data.get('raw_arr_message'),
+            # 'remarks': flight_data.get('remarks'),
             'center_name': flight_data.get('center_name'),
-            'source_sheet': flight_data.get('source_sheet'),
-            'data_format': '2025' if flight_data.get('center_name') else '2024',
+            # 'source_sheet': flight_data.get('source_sheet'),
+            # 'data_format': '2025' if flight_data.get('center_name') else '2024',
             # Добавляем поля региона из geojson
-            'region_cartodb_id': flight_data.get('region_cartodb_id'),
-            'region_name_latin': flight_data.get('region_name_latin')
+            # 'region_cartodb_id': flight_data.get('region_cartodb_id'),
+            # 'region_name_latin': flight_data.get('region_name_latin')
+
+            # "dep_date": datetime.strptime(flight_data.get('dep').get('date'), '%Y-%m-%d').date() if flight_data.get('dep').get('date') else "",
+            "dep_date": flight_data.get('dep').get('date'),
+
+            # "dep_time": datetime.strptime( flight_data.get('dep').get('time_hhmm'), '%H%M').time()  if flight_data.get('dep').get('time_hhmm') else "",
+            "dep_time": flight_data.get('dep').get('time_hhmm'),
+
+            "dep_lat": flight_data.get('dep').get('lat'),
+            "dep_lon": flight_data.get('dep').get('lon'),
+            "dep_aerodrome_code": flight_data.get('dep').get('aerodrome_code'),
+            "dep_aerodrome_name": flight_data.get('dep').get('aerodrome_name'),
+
+            # "arr_date": datetime.strptime(flight_data.get('arr').get('date'), '%Y-%m-%d').date()  if flight_data.get('arr').get('date') else "",
+            "arr_date": flight_data.get('arr').get('date'),
+
+            # "arr_time": datetime.strptime(flight_data.get('arr').get('time_hhmm'), '%H%M').time()  if flight_data.get('arr').get('time_hhmm') else "",
+            "arr_time": flight_data.get('arr').get('time_hhmm'),
+
+            "arr_lat": flight_data.get('arr').get('lat'),
+            "arr_lon": flight_data.get('arr').get('lon'),
+            "arr_aerodrome_code": flight_data.get('arr').get('aerodrome_code'),
+            "arr_aerodrome_name": flight_data.get('arr').get('aerodrome_name'),
+            "start_ts": flight_data.get('start_ts'),
+            "end_ts": flight_data.get('start_ts'),
+            "duration_min": flight_data.get('duration_min'),
+            # "zone_data": json.dumps(flight_data.get('zone', {}), ensure_ascii=False) if flight_data.get('zone') else None,
+            "zone_data": flight_data.get('zone', {}),
+            "region_id": flight_data.get('region_id'),
+            "region_name": flight_data.get('region_name')
         }
         
-        # Обрабатываем координаты
-        if 'departure_coords' in flight_data and flight_data['departure_coords']:
-            record['departure_lat'] = flight_data['departure_coords'][0]
-            record['departure_lon'] = flight_data['departure_coords'][1]
-        
-        if 'arrival_coords' in flight_data and flight_data['arrival_coords']:
-            record['arrival_lat'] = flight_data['arrival_coords'][0]
-            record['arrival_lon'] = flight_data['arrival_coords'][1]
-        elif 'destination_coords' in flight_data and flight_data['destination_coords']:
-            record['arrival_lat'] = flight_data['destination_coords'][0]
-            record['arrival_lon'] = flight_data['destination_coords'][1]
-        
-        # Обрабатываем времена
-        if 'departure_datetime' in flight_data:
-            record['departure_time'] = flight_data['departure_datetime']
-        
-        if 'actual_departure_datetime' in flight_data:
-            record['actual_departure_time'] = flight_data['actual_departure_datetime']
-        
-        if 'arrival_datetime' in flight_data:
-            record['arrival_time'] = flight_data['arrival_datetime']
-        
-        if 'actual_arrival_datetime' in flight_data:
-            record['actual_arrival_time'] = flight_data['actual_arrival_datetime']
-        
-        if 'duration_minutes' in flight_data:
-            record['duration_minutes'] = flight_data['duration_minutes']
-        
-        # Обрабатываем высоты (новые поля для 2025.xlsx)
-        if 'min_altitude' in flight_data:
-            record['min_altitude'] = flight_data['min_altitude']
-        
-        if 'max_altitude' in flight_data:
-            record['max_altitude'] = flight_data['max_altitude']
-        
-        # Обрабатываем контактные данные (уже унифицированные в парсере)
-        if 'phone_numbers' in flight_data and flight_data['phone_numbers']:
-            record['phone_numbers'] = json.dumps(flight_data['phone_numbers'], ensure_ascii=False)
-        
+
         return record
+
+    def parse_time(self, time_str: Optional[str]) -> Optional[str]:
+        """
+        Преобразование времени из формата HHMM в HH:MM:SS
+
+        Args:
+            time_str: строка вида "1430"
+
+        Returns:
+            Строка вида "14:30:00" или None
+        """
+        if not time_str:
+            return None
+
+        time_str = str(time_str).strip()
+        if len(time_str) == 4 and time_str.isdigit():
+            return f"{time_str[:2]}:{time_str[2:]}:00"
+        return None

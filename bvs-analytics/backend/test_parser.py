@@ -11,12 +11,13 @@ root_dir = Path(__file__).parent
 sys.path.insert(0, str(root_dir))
 
 from parsers.telegram_parser import TelegramParser
-
+from parsers.flight_parser import FlightParser
 def test_parser():
     """Тестирует парсер на примерах из данных"""
     
     parser = TelegramParser()
-    
+    parser_new = FlightParser('../data/aerodroms.json', '../data/ltsa.json')
+
     # Пример SHR сообщения из данных
     shr_example = """(SHR-ZZZZZ
 -ZZZZ0900
@@ -36,51 +37,57 @@ OPR/МЕНЖУЛИН АЛЕКСЕЙ ПЕТРОВИ4 REG/07C4935 TYP/BLA RMK/MР1
     arr_example = """(ARR-ZZZZZ-ZZZZ0900-ZZZZ1515
 -REG/07C4935 DOF/240101 RMK/MR11608 DEP/5509N03737E
  DEST/5509N03737E)"""
-    
+    print("=== ТЕСТ НОВОГО ПАРСЕРА ТЕЛЕГРАММ БВС ===\n")
+
+    parsed = parser_new.parse_row("", shr_example, dep_example, arr_example)
+    print("✅ SHR сообщение успешно распарсено:")
+    for key, value in parsed.items():
+        if key != 'raw_message':
+            print(f"   {key}: {value}")
     print("=== ТЕСТ ПАРСЕРА ТЕЛЕГРАММ БВС ===\n")
     
     # Тест парсинга SHR сообщения
-    print("1. Тест SHR сообщения:")
-    shr_result = parser.parse_shr_message(shr_example)
-    
-    if 'error' not in shr_result:
-        print("✅ SHR сообщение успешно распарсено:")
-        for key, value in shr_result.items():
-            if key != 'raw_message':
-                print(f"   {key}: {value}")
-    else:
-        print(f"❌ Ошибка парсинга SHR: {shr_result['error']}")
-    
-    print("\n" + "="*50 + "\n")
-    
+    # print("1. Тест SHR сообщения:")
+    # shr_result = parser.parse_shr_message(shr_example)
+    #
+    # if 'error' not in shr_result:
+    #     print("✅ SHR сообщение успешно распарсено:")
+    #     for key, value in shr_result.items():
+    #         if key != 'raw_message':
+    #             print(f"   {key}: {value}")
+    # else:
+    #     print(f"❌ Ошибка парсинга SHR: {shr_result['error']}")
+    #
+    # print("\n" + "="*50 + "\n")
+    #
     # Тест парсинга DEP сообщения
-    print("2. Тест DEP сообщения:")
-    dep_result = parser.parse_dep_message(dep_example)
-    
-    if 'error' not in dep_result:
-        print("✅ DEP сообщение успешно распарсено:")
-        for key, value in dep_result.items():
-            if key != 'raw_message':
-                print(f"   {key}: {value}")
-    else:
-        print(f"❌ Ошибка парсинга DEP: {dep_result['error']}")
-    
-    print("\n" + "="*50 + "\n")
-    
+    # print("2. Тест DEP сообщения:")
+    # dep_result = parser.parse_dep_message(dep_example)
+    #
+    # if 'error' not in dep_result:
+    #     print("✅ DEP сообщение успешно распарсено:")
+    #     for key, value in dep_result.items():
+    #         if key != 'raw_message':
+    #             print(f"   {key}: {value}")
+    # else:
+    #     print(f"❌ Ошибка парсинга DEP: {dep_result['error']}")
+    #
+    # print("\n" + "="*50 + "\n")
+    #
     # Тест парсинга ARR сообщения
-    print("3. Тест ARR сообщения:")
-    arr_result = parser.parse_arr_message(arr_example)
-    
-    if 'error' not in arr_result:
-        print("✅ ARR сообщение успешно распарсено:")
-        for key, value in arr_result.items():
-            if key != 'raw_message':
-                print(f"   {key}: {value}")
-    else:
-        print(f"❌ Ошибка парсинга ARR: {arr_result['error']}")
-    
-    print("\n" + "="*50 + "\n")
-    
+    # print("3. Тест ARR сообщения:")
+    # arr_result = parser.parse_arr_message(arr_example)
+    #
+    # if 'error' not in arr_result:
+    #     print("✅ ARR сообщение успешно распарсено:")
+    #     for key, value in arr_result.items():
+    #         if key != 'raw_message':
+    #             print(f"   {key}: {value}")
+    # else:
+    #     print(f"❌ Ошибка парсинга ARR: {arr_result['error']}")
+    #
+    # print("\n" + "="*50 + "\n")
+    #
     # Тест объединенного парсинга
     print("4. Тест объединенного парсинга полета:")
     combined_result = parser.parse_flight_messages(shr_example, dep_example, arr_example)

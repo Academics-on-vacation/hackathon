@@ -8,6 +8,7 @@ import tempfile
 import os
 
 from ..models.flight import Flight, Region, FlightStatistics
+from ..models.flight_new import FlightNew
 from ..schemas.flight import FlightCreate, FlightFilter, BasicMetrics, ExtendedMetrics, RegionRating
 from parsers.data_processor import DataProcessor
 
@@ -35,31 +36,31 @@ class FlightService:
                 
                 imported_count = 0
                 errors = result.get('errors', [])
-                
+
                 # Сохраняем полеты в БД
                 for flight_data in result.get('flights', []):
                     try:
                         # Находим или создаем регион
-                        region = self._get_or_create_region(flight_data.get('region_name'))
-                        
+                        # region = self._get_or_create_region(flight_data.get('region_name'))
+                        #
                         # Создаем запись полета
                         flight_record = self.data_processor.create_flight_record(flight_data)
-                        if region:
-                            flight_record['region_id'] = region.id
-                        
+                        # if region:
+                        #     flight_record['region_id'] = region.id
+
                         # Создаем объект полета
-                        flight = Flight(**flight_record)
+                        flight = FlightNew(**flight_record)
                         self.db.add(flight)
                         imported_count += 1
-                        
+
                     except Exception as e:
                         error_msg = f"Error saving flight: {str(e)}"
                         logger.error(error_msg)
                         errors.append(error_msg)
-                
+
                 # Сохраняем изменения
                 self.db.commit()
-                
+
                 logger.info(f"Successfully imported {imported_count} flights")
                 
                 return {
