@@ -126,7 +126,8 @@ async def login_frontend(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     db: Session = Depends(get_db)
 ):
-    return ({
-        'token' : login_for_access_token(form_data, db),
-        'user' : authenticate_user(db, UserAuth(user_login=form_data.username, user_password=form_data.password))
-    })
+    token = await login_for_access_token(form_data, db)
+    return {
+        'token' : token,
+        'user' : db.query(User).filter(User.username == form_data.username).first()
+    }
