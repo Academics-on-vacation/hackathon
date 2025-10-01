@@ -70,12 +70,6 @@
           </div>
         </div>
       </div>
-
-      <div class="flex justify-between">
-        <a class="px-6 py-2 bg-green-600 text-white text-decoration-none rounded w-full text-center hover:-translate-y-1" style="color: white" :href="'/flight/'+flight.sid" target="_blank">
-          Посмотреть подробнее
-        </a>
-      </div>
     </div>
 
     <div v-else class="text-gray-500 text-sm">

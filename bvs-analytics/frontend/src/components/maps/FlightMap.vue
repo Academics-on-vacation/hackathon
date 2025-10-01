@@ -46,7 +46,7 @@
         <div class="point-indicator departure"></div>
         <div>
           <strong>A: Вылет</strong>
-          <div>{{ flight.dep.lat !== null ? flight.dep.lat.toFixed(6) : '-' }}, {{ flight.dep.lon !== null ? flight.dep.lon.toFixed(6) : '-' }}</div>
+          <div>{{ flight.dep.lat.toFixed(6) }}, {{ flight.dep.lon.toFixed(6) }}</div>
           <small>{{ formatDateTime(flight.dep.date, flight.dep.time_hhmm) }}</small>
         </div>
       </div>
@@ -63,9 +63,7 @@
         <div class="point-indicator arrival"></div>
         <div>
           <strong>B: Прибытие</strong>
-<!--          <div>Ш: {{ flight.arr.lat != null ? flight.arr.lat.toFixed(4) : '—'  }}°</div>-->
-<!--          <div>Д: {{ flight.arr.lon != null ? flight.arr.lat.toFixed(4): '—'  }}°</div>-->
-          <div>{{ flight.arr.lat != null ? flight.arr.lat.toFixed(6) : '—'  }}, {{ flight.arr.lon != null ? flight.arr.lon.toFixed(6): '—'  }}</div>
+          <div>{{ flight.arr.lat.toFixed(6) }}, {{ flight.arr.lon.toFixed(6) }}</div>
           <small>{{ formatDateTime(flight.arr.date, flight.arr.time_hhmm) }}</small>
         </div>
       </div>
@@ -169,10 +167,7 @@ const calculatedSpeed = computed(() => {
 // Инициализация карты
 const initMap = () => {
   if (!mapContainer.value) return
-  if (props.flight.dep.lat === null && props.flight.arr.lat === null)
-  {
-    return;
-  }
+
   // Создание карты
   map = L.map(mapContainer.value).setView(
       [props.flight.dep.lat, props.flight.dep.lon],
@@ -270,6 +265,11 @@ const createRoute = () => {
     })
   })
 
+  for (let test in props.zone.features[0]['geometry']['coordinates'])
+  {
+    console.log(props.zone.features[0]['geometry']['coordinates'][test])
+  }
+  // 5446N02024E
   if (props.zone)
   {
     console.log(props.zone)

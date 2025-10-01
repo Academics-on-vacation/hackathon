@@ -5,6 +5,8 @@ import Region from "@/components/Region.vue"
 import Flight from "@/components/Flight.vue"
 import History from "@/components/History.vue"
 import Login from "@/components/Login.vue"
+import LoadPage from "@/components/LoadPage.vue";
+import RegionsPage from "@/components/RegionsPage.vue";
 
 const routes = [
     {
@@ -40,6 +42,15 @@ const routes = [
         component: History,
         props: true,
         meta: { requiresAuth: true, requiresRole: "admin" }
+    },
+    {
+        path: '/load',
+        component: LoadPage,
+        meta: {requiresAuth: true, role: "admin"}
+    },
+    {
+        path: '/regions',
+        component: RegionsPage
     }
 ]
 

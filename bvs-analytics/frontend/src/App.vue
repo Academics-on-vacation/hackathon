@@ -26,13 +26,15 @@
               </router-link>
             </li>
             <li>
-              <a href="#" class="flex items-center px-4 py-3 rounded-lg hover:bg-blue-700 transition-all duration-200">
+              <router-link to="/regions" class="flex items-center px-4 py-3 rounded-lg hover:bg-blue-700 transition-all duration-200"
+                           active-class="bg-blue-700 text-white shadow-sm">
                 <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"/>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
                 </svg>
-                Загрузка данных
-              </a>
+                Регионы
+              </router-link>
             </li>
+
             <li>
               <router-link to="/history" class="flex items-center px-4 py-3 rounded-lg hover:bg-blue-700 transition-all duration-200"
                            active-class="bg-blue-700 text-white shadow-sm">
@@ -40,6 +42,14 @@
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
                 </svg>
                 История
+              </router-link>
+            </li>
+            <li>
+              <router-link to="/load" class="flex items-center px-4 py-3 rounded-lg hover:bg-blue-700 transition-all duration-200">
+                <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"/>
+                </svg>
+                Загрузка данных
               </router-link>
             </li>
           </ul>
