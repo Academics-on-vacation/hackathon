@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any
 from datetime import date, datetime
+from collections import Counter
+import json
 
 from ..core.database import get_db
 from ..schemas.flight import (
@@ -73,170 +75,357 @@ def get_flights(
     service = FlightService(db)
     return service.get_flights(skip=skip, limit=limit, filters=filters)
 
-@router.get("/{flight_id}", response_model=Flight)
-def get_flight(
-    flight_id: str,
-    db: Session = Depends(get_db)
+
+@router.get("/api/flights_stats/region/{region_id}")
+async def flights_stats_region(
+    region_id: int,
+    start_date: Optional[str] = Query(None, description="Начало диапазона dep_date (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="Конец диапазона dep_date (YYYY-MM-DD)")
 ):
-    """Получение детальной информации о полете"""
-    service = FlightService(db)
-    flight = service.get_flight_by_id(flight_id)
-    
-    if not flight:
-        raise HTTPException(status_code=404, detail="Полет не найден")
-    
+    # 🛠️ Преобразуем строки в date
+    start_dt = datetime.strptime(start_date, "%Y-%m-%d").date() if start_date else None
+    end_dt = datetime.strptime(end_date, "%Y-%m-%d").date() if end_date else None
+
+    conn = await get_db()
+
+    query = "SELECT * FROM flights_new WHERE region_id = $1"
+    params = [region_id]
+
+    if start_dt and end_dt:
+        query += " AND dep_date BETWEEN $2 AND $3"
+        params.extend([start_dt, end_dt])
+    elif start_dt:
+        query += " AND dep_date >= $2"
+        params.append(start_dt)
+    elif end_dt:
+        query += " AND dep_date <= $2"
+        params.append(end_dt)
+
+    rows = await conn.fetch(query, *params)
+    await conn.close()
+
+    if not rows:
+        raise HTTPException(status_code=404, detail="No flights for this region and date range")
+
+    # === остальной код статистики остаётся таким же ===
+    durations = []
+    months = Counter()
+    weekdays = Counter()
+    times = Counter()
+    types = Counter()
+    operators = Counter()
+    flights = []
+    region_name = rows[0]["region_name"]
+
+    for r in rows:
+        duration = r["duration_min"] or 0
+        durations.append(duration)
+
+        start_ts = r["start_ts"]
+        if start_ts:
+            dt = start_ts if isinstance(start_ts, datetime) else datetime.fromisoformat(str(start_ts))
+            times[dt.hour] += 1
+            weekdays[dt.isoweekday()] += 1
+            months[dt.month - 1] += 1
+
+        types[r["uav_type"] or ""] += 1
+        if r["operator"]:
+            operators[r["operator"]] += 1
+
+        zone_data = json.loads(r["zone_data"]) if isinstance(r["zone_data"], str) else r["zone_data"]
+        flights.append({
+            "sid": r["sid"],
+            "center_name": r["center_name"],
+            "uav_type": r["uav_type"],
+            "operator": r["operator"],
+            "zone": zone_data,
+            "dep": {
+                "date": r["dep_date"].isoformat() if r["dep_date"] else None,
+                "time_hhmm": r["dep_time"].strftime("%H%M") if r["dep_time"] else None,
+                "lat": r["dep_lat"],
+                "lon": r["dep_lon"],
+                "aerodrome_code": r["dep_aerodrome_code"],
+                "aerodrome_name": r["dep_aerodrome_name"],
+            },
+            "arr": {
+                "date": r["arr_date"].isoformat() if r["arr_date"] else None,
+                "time_hhmm": r["arr_time"].strftime("%H%M") if r["arr_time"] else None,
+                "lat": r["arr_lat"],
+                "lon": r["arr_lon"],
+                "aerodrome_code": r["arr_aerodrome_code"],
+                "aerodrome_name": r["arr_aerodrome_name"],
+            },
+            "start_ts": r["start_ts"].isoformat() if r["start_ts"] else None,
+            "end_ts": r["end_ts"].isoformat() if r["end_ts"] else None,
+            "duration_min": r["duration_min"],
+            "region_id": r["region_id"],
+            "region_name": r["region_name"],
+        })
+
+    flights.sort(key=lambda x: x["duration_min"] or 0, reverse=True)
+    top = flights[:100]
+
+    month_names = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
+                   "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"]
+    week_names = ["", "Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
+
+    months_pre = {month_names[m]: months[m] for m in sorted(months)}
+    weekdays_pre = {week_names[d]: weekdays[d] for d in sorted(weekdays)}
+    times_pre = {f"{h}:00": times[h] for h in sorted(times)}
+
+    stats = {
+        "name": region_name,
+        "duration": sum(durations),
+        "avg_duration": sum(durations) / len(durations) if durations else 0,
+        "flights": len(durations),
+        "month": months_pre,
+        "weekdays": weekdays_pre,
+        "types": dict(types),
+        "operators": dict(operators),
+        "times": times_pre,
+        "regions": {
+            str(region_id): {
+                "name": region_name,
+                "flights": len(durations),
+                "avgDuration": sum(durations) / len(durations) if durations else 0,
+                "duration": sum(durations),
+            }
+        },
+        "top": top,
+    }
+
+    return stats
+
+
+
+@router.get("/api/flights_stats")
+async def flights_stats(
+    start_date: Optional[str] = Query(None, description="Начало диапазона dep_date (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="Конец диапазона dep_date (YYYY-MM-DD)")
+):
+    start_dt = datetime.strptime(start_date, "%Y-%m-%d").date() if start_date else None
+    end_dt = datetime.strptime(end_date, "%Y-%m-%d").date() if end_date else None
+
+    conn = await get_db()
+
+    query = "SELECT * FROM flights_new WHERE 1=1"
+    params = []
+
+    if start_dt and end_dt:
+        query += " AND dep_date BETWEEN $1 AND $2"
+        params.extend([start_dt, end_dt])
+    elif start_dt:
+        query += " AND dep_date >= $1"
+        params.append(start_dt)
+    elif end_dt:
+        query += " AND dep_date <= $1"
+        params.append(end_dt)
+
+    rows = await conn.fetch(query, *params)
+    await conn.close()
+
+    if not rows:
+        raise HTTPException(status_code=404, detail="No flights found for this date range")
+
+    durations = []
+    types = Counter()
+    operators = Counter()
+    regions = Counter()
+
+    for r in rows:
+        durations.append(r["duration_min"] or 0)
+        types[r["uav_type"] or ""] += 1
+        if r["operator"]:
+            operators[r["operator"]] += 1
+        regions[r["region_name"]] += 1
+
+    result = {
+        "duration": sum(durations),
+        "avg_duration": sum(durations) / len(durations) if durations else 0,
+        "flights": len(durations),
+        "types": dict(types),
+        "operators": dict(operators),
+        "regions": dict(regions)
+    }
+
+    return result
+
+
+
+@router.get("/api/flights")
+async def flights_all():
+    from datetime import datetime, timezone
+    conn = await get_db()
+    rows = await conn.fetch("""SELECT * FROM flights_new""")
+    await conn.close()
+
+    if not rows:
+        raise HTTPException(status_code=404, detail="No flights found")
+
+    flights = []
+    for r in rows:
+        # zone_data может быть JSON или строкой
+        import json
+        zone_data = json.loads(r["zone_data"]) if isinstance(r["zone_data"], str) else r["zone_data"]
+
+        flights.append({
+            "sid": r["sid"],
+            "center_name": r["center_name"],
+            "uav_type": r["uav_type"],
+            "operator": r["operator"],
+            "zone": zone_data,
+            "dep": {
+                "date": r["dep_date"].isoformat() if r["dep_date"] else None,
+                "time_hhmm": r["dep_time"].strftime("%H%M") if r["dep_time"] else None,
+                "lat": r["dep_lat"],
+                "lon": r["dep_lon"],
+                "aerodrome_code": r["dep_aerodrome_code"],
+                "aerodrome_name": r["dep_aerodrome_name"],
+            },
+            "arr": {
+                "date": r["arr_date"].isoformat() if r["arr_date"] else None,
+                "time_hhmm": r["arr_time"].strftime("%H%M") if r["arr_time"] else None,
+                "lat": r["arr_lat"],
+                "lon": r["arr_lon"],
+                "aerodrome_code": r["arr_aerodrome_code"],
+                "aerodrome_name": r["arr_aerodrome_name"],
+            },
+            "start_ts": r["start_ts"].isoformat() if r["start_ts"] else None,
+            "end_ts": r["end_ts"].isoformat() if r["end_ts"] else None,
+            "duration_min": r["duration_min"],
+            "region_id": r["region_id"],
+            "region_name": r["region_name"],
+        })
+
+    meta = {
+        "source_excel": "2025.xlsx",   # можно вынести в ENV или конфиг
+        "sheet": "Result_1",
+        "parsed_rows": len(rows),
+        "generated_at": datetime.now(timezone.utc).isoformat()
+    }
+
+    return {"meta": meta, "flights": flights}
+
+
+
+
+
+@router.get("/api/regions")
+async def regions_stats():
+    conn = await get_db()
+    rows = await conn.fetch("""
+        SELECT region_id, region_name, duration_min, start_ts, end_ts
+        FROM flights_new
+    """)
+    await conn.close()
+
+    if not rows:
+        raise HTTPException(status_code=404, detail="No flights found")
+
+    from collections import defaultdict
+    from datetime import datetime, timezone
+
+    # Словарь для агрегации
+    regions = defaultdict(lambda: {
+        "region_id": None,
+        "name": None,
+        "flights": 0,
+        "duration_sum": 0,
+        "last_flight": None,
+    })
+
+    for r in rows:
+        rid = r["region_id"]
+        name = r["region_name"]
+
+        regions[rid]["region_id"] = rid
+        regions[rid]["name"] = name
+        regions[rid]["flights"] += 1
+        regions[rid]["duration_sum"] += r["duration_min"] or 0
+
+        # определяем последний полёт — это максимум по start_ts или end_ts
+        ts_candidates = [t for t in [r["start_ts"], r["end_ts"]] if t is not None]
+        if ts_candidates:
+            latest = max(ts_candidates)
+            prev = regions[rid]["last_flight"]
+            if not prev or latest > prev:
+                regions[rid]["last_flight"] = latest
+
+    # формируем итоговый список
+    result = []
+    for rid, data in regions.items():
+        flights_count = data["flights"]
+        avg_duration = data["duration_sum"] / flights_count if flights_count else 0
+        result.append({
+            "region_id": data["region_id"],
+            "name": data["name"],
+            "flights": flights_count,
+            "avgDuration": round(avg_duration, 1),
+            "duration": data["duration_sum"],
+            "last_flight": data["last_flight"].astimezone(timezone.utc).isoformat() if data["last_flight"] else None
+        })
+
+    # сортируем по количеству полётов (или по последнему полёту — как тебе нужно)
+    result.sort(key=lambda x: x["flights"], reverse=True)
+
+    return result
+
+
+
+
+
+@router.get("/api/flight/{sid}")
+async def get_flight(sid: str):
+    conn = await get_db()
+    row = await conn.fetchrow("""SELECT * FROM flights_new WHERE sid = $1""", sid)
+    await conn.close()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Flight not found")
+
+    import json
+    # Обработка zone_data
+    zone_data = row["zone_data"]
+    if isinstance(zone_data, str):
+        try:
+            zone = json.loads(zone_data)
+        except json.JSONDecodeError:
+            zone = zone_data
+    else:
+        zone = zone_data
+
+    # Формирование объекта рейса
+    flight = {
+        "sid": row["sid"],
+        "center_name": row["center_name"],
+        "uav_type": row["uav_type"],
+        "operator": row["operator"],
+        "zone": zone,
+        "dep": {
+            "date": row["dep_date"].isoformat() if row["dep_date"] else None,
+            "time_hhmm": row["dep_time"].strftime("%H%M") if row["dep_time"] else None,
+            "lat": row["dep_lat"],
+            "lon": row["dep_lon"],
+            "aerodrome_code": row["dep_aerodrome_code"],
+            "aerodrome_name": row["dep_aerodrome_name"],
+        },
+        "arr": {
+            "date": row["arr_date"].isoformat() if row["arr_date"] else None,
+            "time_hhmm": row["arr_time"].strftime("%H%M") if row["arr_time"] else None,
+            "lat": row["arr_lat"],
+            "lon": row["arr_lon"],
+            "aerodrome_code": row["arr_aerodrome_code"],
+            "aerodrome_name": row["arr_aerodrome_name"],
+        },
+        "start_ts": row["start_ts"].isoformat() if row["start_ts"] else None,
+        "end_ts": row["end_ts"].isoformat() if row["end_ts"] else None,
+        "duration_min": row["duration_min"],
+        "region_id": row["region_id"],
+        "region_name": row["region_name"],
+    }
+
     return flight
 
-@router.get("/statistics/basic", response_model=BasicMetrics)
-def get_basic_statistics(
-    region: Optional[str] = Query(None, description="Фильтр по региону"),
-    aircraft_type: Optional[str] = Query(None, description="Фильтр по типу БВС"),
-    operator: Optional[str] = Query(None, description="Фильтр по оператору"),
-    date_from: Optional[date] = Query(None, description="Дата начала периода"),
-    date_to: Optional[date] = Query(None, description="Дата окончания периода"),
-    db: Session = Depends(get_db)
-):
-    """
-    Получение базовых метрик полетов
-    
-    Включает:
-    - Общее количество полетов
-    - Среднюю длительность полетов
-    - Количество уникальных БВС
-    - Количество уникальных операторов
-    - Диапазон дат
-    """
-    filters = FlightFilter(
-        region=region,
-        aircraft_type=aircraft_type,
-        operator=operator,
-        date_from=datetime.combine(date_from, datetime.min.time()) if date_from else None,
-        date_to=datetime.combine(date_to, datetime.max.time()) if date_to else None
-    )
-    
-    service = FlightService(db)
-    return service.get_basic_metrics(filters)
-
-@router.get("/statistics/extended", response_model=ExtendedMetrics)
-def get_extended_statistics(
-    region: Optional[str] = Query(None, description="Фильтр по региону"),
-    aircraft_type: Optional[str] = Query(None, description="Фильтр по типу БВС"),
-    date_from: Optional[date] = Query(None, description="Дата начала периода"),
-    date_to: Optional[date] = Query(None, description="Дата окончания периода"),
-    db: Session = Depends(get_db)
-):
-    """
-    Получение расширенных метрик полетов
-    
-    Включает:
-    - Пиковую нагрузку по часам
-    - Плотность полетов на 1000 км²
-    - Распределение полетов по часам
-    - Распределение полетов по дням недели
-    - Количество дней без полетов
-    """
-    filters = FlightFilter(
-        region=region,
-        aircraft_type=aircraft_type,
-        date_from=datetime.combine(date_from, datetime.min.time()) if date_from else None,
-        date_to=datetime.combine(date_to, datetime.max.time()) if date_to else None
-    )
-    
-    service = FlightService(db)
-    return service.get_extended_metrics(filters)
-
-@router.get("/statistics/summary")
-def get_statistics_summary(
-    region: Optional[str] = Query(None, description="Фильтр по региону"),
-    aircraft_type: Optional[str] = Query(None, description="Фильтр по типу БВС"),
-    date_from: Optional[date] = Query(None, description="Дата начала периода"),
-    date_to: Optional[date] = Query(None, description="Дата окончания периода"),
-    db: Session = Depends(get_db)
-):
-    """
-    Получение сводной статистики полетов
-    
-    Объединяет базовые и расширенные метрики, топ регионов,
-    распределение по месяцам и типам БВС
-    """
-    filters = FlightFilter(
-        region=region,
-        aircraft_type=aircraft_type,
-        date_from=datetime.combine(date_from, datetime.min.time()) if date_from else None,
-        date_to=datetime.combine(date_to, datetime.max.time()) if date_to else None
-    )
-    
-    service = FlightService(db)
-    return service.get_flight_statistics_summary(filters)
-
-@router.get("/regions/rating", response_model=List[RegionRating])
-def get_regions_rating(
-    date_from: Optional[date] = Query(None, description="Дата начала периода"),
-    date_to: Optional[date] = Query(None, description="Дата окончания периода"),
-    limit: int = Query(20, ge=1, le=100, description="Количество регионов в рейтинге"),
-    db: Session = Depends(get_db)
-):
-    """
-    Рейтинг регионов по активности полетов БВС
-    
-    Сортировка по количеству полетов (убывание)
-    Включает плотность полетов на 1000 км²
-    """
-    service = FlightService(db)
-    ratings = service.get_regions_rating(date_from, date_to)
-    return ratings[:limit]
-
-@router.get("/analytics/monthly")
-def get_monthly_analytics(
-    region: Optional[str] = Query(None, description="Фильтр по региону"),
-    db: Session = Depends(get_db)
-):
-    """Аналитика полетов по месяцам"""
-    filters = FlightFilter(region=region) if region else None
-    service = FlightService(db)
-    return service.get_flights_by_month(filters)
-
-@router.get("/analytics/aircraft-types")
-def get_aircraft_types_analytics(
-    region: Optional[str] = Query(None, description="Фильтр по региону"),
-    db: Session = Depends(get_db)
-):
-    """Аналитика полетов по типам БВС"""
-    filters = FlightFilter(region=region) if region else None
-    service = FlightService(db)
-    return service.get_flights_by_aircraft_type(filters)
-
-@router.get("/export/{format}")
-async def export_flights(
-    format: str,
-    region: Optional[str] = Query(None, description="Фильтр по региону"),
-    aircraft_type: Optional[str] = Query(None, description="Фильтр по типу БВС"),
-    date_from: Optional[date] = Query(None, description="Дата начала периода"),
-    date_to: Optional[date] = Query(None, description="Дата окончания периода"),
-    include_raw: bool = Query(False, description="Включить исходные сообщения"),
-    db: Session = Depends(get_db)
-):
-    """
-    Экспорт данных полетов в различных форматах
-    
-    Поддерживаемые форматы:
-    - json: JSON файл с данными
-    - csv: CSV файл для Excel
-    - xlsx: Excel файл
-    - png: График статистики
-    - jpeg: График статистики
-    """
-    if format not in ['json', 'csv', 'xlsx', 'png', 'jpeg']:
-        raise HTTPException(
-            status_code=400, 
-            detail="Поддерживаемые форматы: json, csv, xlsx, png, jpeg"
-        )
-    
-    # TODO: Реализовать экспорт данных
-    raise HTTPException(
-        status_code=501, 
-        detail="Экспорт данных будет реализован в следующей версии"
-    )
 
 @router.get("/health")
 def health_check(db: Session = Depends(get_db)):
