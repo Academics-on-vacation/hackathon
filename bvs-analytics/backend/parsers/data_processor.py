@@ -170,7 +170,7 @@ class DataProcessor:
             # 'data_format': '2025' if flight_data.get('center_name') else '2024',
             # Добавляем поля региона из geojson
             # 'region_cartodb_id': flight_data.get('region_cartodb_id'),
-            # 'region_name_latin': flight_data.get('region_name_latin')
+            # 'region_name_latin': flight_data.get('region_name')
 
             # "dep_date": datetime.strptime(flight_data.get('dep').get('date'), '%Y-%m-%d').date() if flight_data.get('dep').get('date') else "",
             "dep_date": flight_data.get('dep').get('date'),

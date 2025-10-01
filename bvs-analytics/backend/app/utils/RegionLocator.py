@@ -37,7 +37,7 @@ class RegionLocator:
                 result = {
                     'name': region_info.get('name'),
                     'cartodb_id': region_info.get('cartodb_id'),
-                    'name_latin': region_info.get('name_latin'),
+                    'name_latin': region_info.get('name'),
                     'created_at': region_info.get('created_at'),
                     'updated_at': region_info.get('updated_at')
                 }
@@ -62,7 +62,7 @@ if __name__ == "__main__":
     print("Москва →", region)
     if region:
         print(f"  cartodb_id: {region.get('cartodb_id')}")
-        print(f"  name_latin: {region.get('name_latin')}")
+        print(f"  name_latin: {region.get('name')}")
 
     # Сочи
     lat, lon = 43.6028, 39.7342
@@ -70,4 +70,4 @@ if __name__ == "__main__":
     print("Сочи →", region)
     if region:
         print(f"  cartodb_id: {region.get('cartodb_id')}")
-        print(f"  name_latin: {region.get('name_latin')}")
+        print(f"  name_latin: {region.get('name')}")
