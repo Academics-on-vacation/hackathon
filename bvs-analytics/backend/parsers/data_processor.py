@@ -21,9 +21,9 @@ class DataProcessor:
         # self.parser = TelegramParser()
 
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        geojson_path = os.path.join(current_dir, "..", "..", "data", "russia.geojson")
-        aerodromes_path = os.path.join(current_dir, "..", "..", "data", "aerodroms.json")
-        zones_path = os.path.join(current_dir, "..", "..", "data", "ltsa.json")
+        geojson_path = os.path.join(current_dir, "..", "data", "russia.geojson")
+        aerodromes_path = os.path.join(current_dir, "..", "data", "aerodroms.json")
+        zones_path = os.path.join(current_dir, "..", "data", "ltsa.json")
         try:
             self.region_locator = RegionLocator(geojson_path)
             logger.info(f"RegionLocator initialized with geojson: {geojson_path}")
