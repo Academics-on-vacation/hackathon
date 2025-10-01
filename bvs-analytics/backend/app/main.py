@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 from .core.config import settings
 from .core.database import engine, Base, init_database
 from .api.flights import router as flights_router
+from .api.auth import auth as auth_router
 
 # Настройка логирования
 logging.basicConfig(
@@ -65,6 +66,10 @@ app.include_router(
     flights_router,
     prefix=f"{settings.API_V1_STR}",
     tags=["flights"]
+)
+app.include_router(
+    auth_router,
+    tags=["auth"]
 )
 
 @app.get("/")
