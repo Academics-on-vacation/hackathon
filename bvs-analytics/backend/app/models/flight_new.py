@@ -1,8 +1,9 @@
 # test_analytics.py
-from sqlalchemy import create_engine, Column, Integer, String, Date, Time, DateTime, DECIMAL, Text, func, extract
+from sqlalchemy import create_engine, Column, Integer, String, Date, Time, DateTime, DECIMAL, Text, func, extract, JSON
 from datetime import date, time, datetime, timedelta
 
 from sqlalchemy.dialects.postgresql import JSONB
+from ..core.config import settings
 
 from ..core.database import Base
 
@@ -39,7 +40,7 @@ class FlightNew(Base):
     duration_min = Column(Integer)
 
     # Зона и регион
-    zone_data = Column(JSONB)
+    zone_data = Column(JSONB if "postgres" in settings.DATABASE_URL else JSON)
     region_id = Column(Integer)
     region_name = Column(String(255))
 
