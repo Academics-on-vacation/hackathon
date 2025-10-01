@@ -19,8 +19,8 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Копируем код приложения
 COPY backend/ .
 
-# Копируем файл russia.geojson
-COPY data/russia.geojson /app/data/russia.geojson
+# Копируем файлы из data
+COPY data/ /app/data/
 
 # Создаем необходимые директории
 RUN mkdir -p uploads logs data
