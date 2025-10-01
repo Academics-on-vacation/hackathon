@@ -43,7 +43,7 @@ class Token(BaseModel):
 
 pwd_context = CryptContext(schemes=["bcrypt"])
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token_only")
 
 auth = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -96,13 +96,13 @@ def check_access(
 ):
     return current_user.role >= role
 
-@auth.get("/")
+@auth.get("")
 async def get_user_data(
     current_user: Annotated[User, Depends(get_current_user)],
 ):
     return current_user
 
-@auth.post("/")
+@auth.post("/token_only")
 async def login_for_access_token(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     db: Session = Depends(get_db)
@@ -120,3 +120,13 @@ async def login_for_access_token(
         expires_delta = access_token_expires
     )
     return Token(access_token=access_token, token_type="bearer")
+
+@auth.post("")
+async def login_frontend(
+    form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
+    db: Session = Depends(get_db)
+):
+    return ({
+        'token' : login_for_access_token(form_data, db),
+        'user' : authenticate_user(db, UserAuth(user_login=form_data.username, user_password=form_data.password))
+    })
