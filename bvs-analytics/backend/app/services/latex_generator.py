@@ -4,30 +4,29 @@ import subprocess
 from datetime import date
 from pathlib import Path
 from typing import Dict, Any
+from sqlalchemy.orm import Session
 
-class settings: COMPILE_RETRY = 3
-# from ...core.config import settings
+from .report_preparation import prepare_data
+from ..core.config import settings
 
-def generate_report(begin_date: date | None = None, end_date: date | None = None, region: str | None = None, extended: bool = False, image_dir: str = '') -> str:
-    data = {}
-
+def generate_report(db : Session, begin_date: str | None = None, end_date: str | None = None, region: str | None = None, extended: bool = False) -> str:
     # Create temporary directory for thread-safe operation
     with tempfile.TemporaryDirectory() as temp_dir:
         # prepare temporary latex directory
         temp_dir_path = Path(temp_dir)
         (temp_dir_path / "sections").mkdir()
         
-        # Copy images to temporary directory
+        # Get data
         temp_image_path = temp_dir_path / "images"
-        if image_dir:
-            shutil.copytree(Path(image_dir), temp_image_path, dirs_exist_ok=True)
+        temp_image_path.mkdir()
+        data = prepare_data(db, temp_image_path, begin_date, end_date)
 
         # Generate latex content to files
         (temp_dir_path / "preamble.sty").write_text(generate_preamble(), encoding='utf-8')
-        (temp_dir_path / "main.tex").write_text(generate_main_tex(begin_date, end_date, region, extended, data), encoding='utf-8')
-        (temp_dir_path / "sections" / "metrics.tex").write_text(generate_metrics_tex(data, [img_file.name.split('.')[0] for img_file in temp_image_path.iterdir()]), encoding='utf-8')
-        if extended:
-            (temp_dir_path / "sections" / "flights.tex").write_text(generate_flights_tex(data, extended), encoding='utf-8')
+        (temp_dir_path / "main.tex").write_text(generate_main_tex(begin_date, end_date, region, extended), encoding='utf-8')
+        (temp_dir_path / "sections" / "metrics.tex").write_text(generate_metrics_tex(data, [img_file.name for img_file in temp_image_path.iterdir()]), encoding='utf-8')
+        # if extended:
+        #     (temp_dir_path / "sections" / "flights.tex").write_text(generate_flights_tex(flight_data, extended), encoding='utf-8')
         
         # Compile LaTeX
         retry_counter = 0
@@ -44,11 +43,11 @@ def generate_report(begin_date: date | None = None, end_date: date | None = None
         time_segment = 'full'
         if begin_date:
             if end_date:
-                time_segment = f'{begin_date.strftime('%d.%m.%Y')}-{end_date.strftime('%d.%m.%Y')}'
+                time_segment = f'{begin_date}-{end_date}'
             else:
-                time_segment = f'since_{begin_date.strftime('%d.%m.%Y')}'
+                time_segment = f'since_{begin_date}'
         elif end_date:
-            time_segment = f'before_{end_date.strftime('%d.%m.%Y')}'
+            time_segment = f'before_{end_date}'
 
         output_filename = f"report_{region_safe}_{time_segment}.pdf"
         final_pdf = temp_dir_path / "main.pdf"
@@ -61,15 +60,15 @@ def generate_report(begin_date: date | None = None, end_date: date | None = None
         
 
 
-def generate_main_tex(begin_date: date | None, end_date: date | None, region: str | None, extended: bool, data: Dict[str, Any]) -> str:
+def generate_main_tex(begin_date: str | None, end_date: str | None, region: str | None, extended: bool) -> str:
     time_segment = 'полный'
     if begin_date:
         if end_date:
-            time_segment = f'{begin_date.strftime('%d.%m.%Y')}-{end_date.strftime('%d.%m.%Y')}'
+            time_segment = f'{begin_date}-{end_date}'
         else:
-            time_segment = f'с {begin_date.strftime('%d.%m.%Y')}'
+            time_segment = f'с {begin_date}'
     elif end_date:
-        time_segment = f'до {end_date.strftime('%d.%m.%Y')}'
+        time_segment = f'до {end_date}'
 
     return fr"""\documentclass[a4paper,11pt]{{report}}
 \usepackage{{preamble}}
@@ -89,21 +88,19 @@ def generate_main_tex(begin_date: date | None, end_date: date | None, region: st
     \centering
     \vspace*{{2cm}}
     
-    {{\Huge \textbf{{\title}}}}
+    {{\Huge \textbf{{Статистика полётов БВС}}}}
     
     \vspace{{3cm}}
     
     \begin{{tabular}}{{ll}}
-        \textbf{{Регион:}} & {region if region else 'все'} \\
-        \textbf{{Период:}} & {begin_date.strftime('%d.%m.%Y')} -- {end_date.strftime('%d.%m.%Y')} \\
+%        \textbf{{Регион:}} & {region if region else 'все'} \\
+        \textbf{{Период:}} & {begin_date} -- {end_date} \\
     \end{{tabular}}
     
     \vfill
 \end{{titlepage}}
 
 \input{{sections/metrics.tex}}
-
-{(r'\section{Список полётов}' + '\n' + r'\input{sections/flights.tex}') if extended else ''}
 
 \end{{document}}"""
 
@@ -131,8 +128,12 @@ def generate_preamble():
 
 def generate_metrics_tex(data: Dict[str, Any], images : list[str] = []) -> str:
     graph_title_mapping = {
-        'peak_load' : 'Пиковая нагрузка: максимальное число полётов за час',
-        'daily_dynamics' : 'Среднесуточная динамика полётов'
+        "topByCount.png" : "Топ-15 регионов по количеству полётов",
+        "topByDuration.png" : "Топ-15 регионов по суммарной длительности полётов",
+        "byHour.png" : "Распределение полётов по времени суток",
+        "byWeekday.png" : "Полёты по дням недели",
+        "byMonth.png" : "Полёты по месяцам",
+        "byType.png" : "Распределение полётов по типам БПЛА"
     }
 
     graphics = ""
@@ -141,28 +142,27 @@ def generate_metrics_tex(data: Dict[str, Any], images : list[str] = []) -> str:
             graphics += fr"""
 \begin{{figure}}[H]
     \centering
-    \includegraphics[width=0.8\textwidth]{{{{images/{image}.png}}}}
+    \includegraphics[width=0.8\textwidth]{{{{images/{image}}}}}
     \caption{{{graph_title_mapping[image]}}}
 \end{{figure}}
 """
-
+    top_regions = sorted(data['regions'].values(), key=lambda x : x.get("flights"), reverse=True)[:15]
+    top_regions_str = '\n'.join(f'    \\item {{ {region.get("name")} }}' for region in top_regions)
     return fr"""\section{{Основные метрики}}
-
 \begin{{itemize}}
-    \item \textbf{{Общее количество полётов:}} {data['total_flights']}
-    \item \textbf{{Средняя длительность полёта:}} {data['avg_duration']} минут
-    \item \textbf{{Пиковая нагрузка:}} {data['peak_load']} полётов в час
-    \item \textbf{{Изменение за месяц:}} {data['monthly_change']}\%
-    \item \textbf{{Плотность полётов:}} {data['flight_density']} на 1000 км²
-    \item \textbf{{Дней без полётов:}} {data['zero_days']}
+    \item \textbf{{Общее количество полетов:}} {data['flights']}
+    \item \textbf{{Суммарная длительность полетов:}} {data['duration']} минут
+    \item \textbf{{Средняя длительность полета:}} {data['avg_duration']} минут
+    \item \textbf{{Число уникальных типов БПЛА:}} {sum(1 for _ in data['types'])}
+    \item \textbf{{Число операторов:}} {sum(1 for _ in data['operators'])}
 \end{{itemize}}
 
-\subsection{{Топ-10 регионов по количеству полётов}}
+\subsection{{Топ-15 регионов по количеству полётов}}
 
 \begin{{enumerate}}
-    {chr(10).join(f'    \\item {{ {region} }}' for region in data['top_regions'])}
+    {top_regions_str}
 \end{{enumerate}}
-""" + ("\\section{Графики}\n" + graphics if graphics else "")
+""" + (("\\section{Графики}\n" + graphics) if graphics else "")
 
 
 def generate_flights_tex(data: Dict[str, Any], extended: bool) -> str:

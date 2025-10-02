@@ -9,21 +9,23 @@
 #  - мелкие категории агрегируются в "Другие"
 #  - угол и расстояния подобраны для аккуратного вида
 
-import os
-import shutil
-import json
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
-from .flights_analytics_service import *
-
-# -----------------------------
-# Конфигурация
-# -----------------------------
-SAVE_DIR = "plots"
+from sqlalchemy.orm import Session
+from .flights_analytics_service import FlightsAnalyticsService
+from pathlib import Path
 
 
-def prepare_data():
+def prepare_data(db : Session, image_dir: Path, start_date: str | None = None, end_date: str | None = None) -> dict:
+    """Получение сводных данных и построение графиков 
+
+    Args:
+        image_dir (Path): Путь к папке с графиками
+
+    Returns:
+        dict: Основные метрики по полученным данным
+    """    
     # -----------------------------
     # Стиль графиков
     # -----------------------------
@@ -39,20 +41,10 @@ def prepare_data():
     })
 
     # -----------------------------
-    # Очистка папки ./plots
-    # -----------------------------
-    if os.path.exists(SAVE_DIR):
-        shutil.rmtree(SAVE_DIR)
-    os.makedirs(SAVE_DIR, exist_ok=True)
-    print("[INFO] Папка plots очищена")
-
-    # -----------------------------
     # Загрузка данных
     # -----------------------------
 
-    resp = FlightsAnalyticsService.get_general_statistics()
-    stats = resp.json()
-
+    stats = FlightsAnalyticsService(db).get_general_statistics(start_date, end_date)
 
 
     # Ожидаемая структура stats:
@@ -68,48 +60,6 @@ def prepare_data():
     #   "regions": { "<id>": {"name": str, "flights": int, "avgDuration": float, "duration": int}, ... },
     #   "top": [...]
     # }
-
-    # -----------------------------
-    # Основные метрики
-    # -----------------------------
-    total_flights = stats.get("flights", 0)
-    total_duration = stats.get("duration", 0)
-    avg_duration = stats.get("avg_duration", 0)
-    unique_uav_types = len(stats.get("types", {}) or {})
-    flight_centers = len(stats.get("operators", {}) or {})
-
-    metrics = {
-        "totalFlights": total_flights,
-        "totalDuration": total_duration,
-        "avgDuration": avg_duration,
-        "uniqueUAVTypes": unique_uav_types,
-        "flightCenters": flight_centers
-    }
-
-    with open(os.path.join(SAVE_DIR, "metrics.json"), "w", encoding="utf-8") as f:
-        json.dump(metrics, f, ensure_ascii=False, indent=2)
-
-    # Карточка с метриками (png)
-    fig, axs = plt.subplots(1, 5, figsize=(20, 4))
-    fig.suptitle("Основные метрики", fontsize=20, fontweight="bold")
-
-    cards = [
-        ("Всего полётов", f"{total_flights:,}".replace(",", " ")),
-        ("Общая длительность", f"{total_duration:,} мин".replace(",", " ")),
-        ("Средняя длительность", f"{avg_duration:.1f} мин"),
-        ("Типы БПЛА", f"{unique_uav_types}"),
-        ("Операторов", f"{flight_centers}")
-    ]
-
-    for ax, (title, value) in zip(axs, cards):
-        ax.axis("off")
-        ax.text(0.5, 0.65, title, fontsize=14, ha="center", color="gray")
-        ax.text(0.5, 0.35, value, fontsize=24, ha="center", fontweight="bold")
-
-    plt.tight_layout()
-    plt.savefig(os.path.join(SAVE_DIR, "metrics.png"))
-    plt.close()
-    print("[INFO] Сохранены метрики: metrics.json, metrics.png")
 
     # -----------------------------
     # Вспомогательные преобразования
@@ -136,7 +86,7 @@ def prepare_data():
         plt.xlabel("Количество полётов")
         plt.ylabel("Регион")
         plt.tight_layout()
-        plt.savefig(os.path.join(SAVE_DIR, "topByCount.png"))
+        plt.savefig(str(image_dir / "topByCount.png"))
         plt.close()
         print("[INFO] Сохранён график: topByCount.png")
 
@@ -151,7 +101,7 @@ def prepare_data():
         plt.xlabel("Длительность (мин.)")
         plt.ylabel("Регион")
         plt.tight_layout()
-        plt.savefig(os.path.join(SAVE_DIR, "topByDuration.png"))
+        plt.savefig(str(image_dir / "topByDuration.png"))
         plt.close()
         print("[INFO] Сохранён график: topByDuration.png")
 
@@ -168,7 +118,7 @@ def prepare_data():
         plt.xticks(rotation=45)
         plt.grid(True, linestyle="--", alpha=0.6)
         plt.tight_layout()
-        plt.savefig(os.path.join(SAVE_DIR, "byHour.png"))
+        plt.savefig(str(image_dir / "byHour.png"))
         plt.close()
         print("[INFO] Сохранён график: byHour.png")
 
@@ -184,7 +134,7 @@ def prepare_data():
         plt.ylabel("Количество полётов")
         plt.xticks(rotation=30)
         plt.tight_layout()
-        plt.savefig(os.path.join(SAVE_DIR, "byWeekday.png"))
+        plt.savefig(str(image_dir / "byWeekday.png"))
         plt.close()
         print("[INFO] Сохранён график: byWeekday.png")
 
@@ -200,7 +150,7 @@ def prepare_data():
         plt.ylabel("Количество полётов")
         plt.xticks(rotation=30)
         plt.tight_layout()
-        plt.savefig(os.path.join(SAVE_DIR, "byMonth.png"))
+        plt.savefig(str(image_dir / "byMonth.png"))
         plt.close()
         print("[INFO] Сохранён график: byMonth.png")
 
@@ -268,8 +218,9 @@ def prepare_data():
         )
 
         plt.tight_layout()
-        plt.savefig(os.path.join(SAVE_DIR, "byType.png"), bbox_inches="tight")
+        plt.savefig(str(image_dir / "byType.png"), bbox_inches="tight")
         plt.close()
         print("[INFO] Сохранён график: byType.png")
 
-    print("\nГотово. Все графики и метрики сохранены в папке:", SAVE_DIR)
+    print("\nГотово. Все графики и метрики сохранены в папке:", image_dir)
+    return stats

@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     # LaTeX Reports
     LATEX_COMPILER: str = "xelatex"
     COMPILE_RETRY: int = 3
+    SAVE_DIR: str = "reports"
+    IMAGE_DIR: str = "images"
     
     class Config:
         env_file = ".env"
