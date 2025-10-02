@@ -13,6 +13,7 @@ from .core.config import settings
 from .core.database import engine, Base, init_database
 from .api.flights import router as flights_router
 from .api.auth import auth as auth_router
+from .api.report import report as report_router
 
 # Настройка логирования
 logging.basicConfig(
@@ -89,6 +90,11 @@ app.include_router(
 app.include_router(
     auth_router,
     tags=["auth"]
+)
+
+app.include_router(
+    report_router,
+    tags=["report"]
 )
 
 # 3. Фронтенд с префиксом /app

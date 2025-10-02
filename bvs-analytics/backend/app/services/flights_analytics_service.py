@@ -137,7 +137,7 @@ class FlightsAnalyticsService:
         }
 
     def get_general_statistics(
-        self, start_date: Optional[str], end_date: Optional[str]
+        self, start_date: Optional[str] = None, end_date: Optional[str] = None
     ) -> Dict[str, Any]:
         start_dt = datetime.strptime(start_date, "%Y-%m-%d").date() if start_date else None
         end_dt = datetime.strptime(end_date, "%Y-%m-%d").date() if end_date else None
