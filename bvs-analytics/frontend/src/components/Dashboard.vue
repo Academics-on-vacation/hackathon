@@ -24,11 +24,11 @@
             </div>
           </div>
           <div class="flex gap-2">
-            <button @click="applyFilters"
+            <button @click=" applyFilters"
                     class="text-white rounded-lg bg-blue-600 px-6 py-3 font-medium">
               Применить
             </button>
-            <button @click="resetFilters"
+            <button @click=" resetFilters"
                     class="text-white rounded-lg bg-gray-600 px-6 py-3 font-medium">
               Сбросить
             </button>
@@ -296,17 +296,42 @@ const loadRegions = async () => {
   }
 }
 
-const applyFilters = () => {
+ const applyFilters = async () => {
   console.log('Фильтры применены:', filters.value)
+  const response_fl = await fetch('api/v1/flights/flights_stats?start_date='+filters.value.startDate+"&end_date="+filters.value.endDate)
+    const data_fl = await response_fl.json()
+    flightsData.value = data_fl.flights
+    regionStats.value = data_fl.regions
+
+    stats.value = {
+      weekdays: data_fl.weekdays,
+      months: data_fl.month,
+      times: data_fl.times,
+      types: data_fl.types,
+      operators: data_fl.operators,
+    }
+
+    loaded.value = true
   // Здесь будет запрос к API с фильтрами
 }
 
-const resetFilters = () => {
+const resetFilters = async () => {
   filters.value = {
     startDate: '2024-01-01',
-    endDate: '2024-01-31'
+    endDate: '2025-01-31'
   }
-  console.log('Фильтры сброшены')
+  const response_fl = await fetch('api/v1/flights/flights_stats')
+    const data_fl = await response_fl.json()
+    flightsData.value = data_fl.flights
+    regionStats.value = data_fl.regions
+
+    stats.value = {
+      weekdays: data_fl.weekdays,
+      months: data_fl.month,
+      times: data_fl.times,
+      types: data_fl.types,
+      operators: data_fl.operators,
+    }
 }
 
 // Простая обертка для IndexedDB

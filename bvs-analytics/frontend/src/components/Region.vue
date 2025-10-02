@@ -286,16 +286,44 @@ const loadRegions = async () => {
   }
 }
 
-const applyFilters = () => {
+const applyFilters = async () => {
   console.log('Фильтры применены:', filters.value)
-  // Здесь будет запрос к API с фильтрами
+  const response_fl = await fetch('/api/v1/flights/flights_stats/region/'+props.id+'?start_date='+filters.value.startDate+"&end_date="+filters.value.endDate)
+    const data_fl = await response_fl.json()
+    flightsData.value = data_fl.flights
+    regionStats.value = data_fl.regions
+
+    regions.value = data_fl.current
+    r_name.value = data_fl.name
+    stats.value = {
+      weekdays: data_fl.weekdays,
+      months: data_fl.month,
+      times: data_fl.times,
+      types: data_fl.types,
+      operators: data_fl.operators,
+      flights: data_fl.top,
+    }
 }
 
-const resetFilters = () => {
+const resetFilters = async () => {
   filters.value = {
-    startDate: '2024-01-01',
-    endDate: '2024-01-31'
+    startDate: '2025-01-01',
+    endDate: '2025-06-31'
   }
-  console.log('Фильтры сброшены')
+  const response_fl = await fetch('/api/v1/flights/flights_stats/region/'+props.id)
+    const data_fl = await response_fl.json()
+    flightsData.value = data_fl.flights
+    regionStats.value = data_fl.regions
+
+    regions.value = data_fl.current
+    r_name.value = data_fl.name
+    stats.value = {
+      weekdays: data_fl.weekdays,
+      months: data_fl.month,
+      times: data_fl.times,
+      types: data_fl.types,
+      operators: data_fl.operators,
+      flights: data_fl.top,
+    }
 }
 </script>
