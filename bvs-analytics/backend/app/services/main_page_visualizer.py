@@ -16,11 +16,11 @@ import requests
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
+from .flights_analytics_service import *
 
 # -----------------------------
 # Конфигурация
 # -----------------------------
-API_STATS_URL = "http://127.0.0.1:8000/api/v1/flights/flights_stats/region/16"
 SAVE_DIR = "plots"
 
 # -----------------------------
@@ -48,10 +48,11 @@ print("[INFO] Папка plots очищена")
 # -----------------------------
 # Загрузка данных
 # -----------------------------
-resp = requests.get(API_STATS_URL, timeout=30)
-if resp.status_code != 200:
-    raise RuntimeError(f"Ошибка API {resp.status_code}: {resp.text}")
+
+resp = FlightsAnalyticsService.get_general_statistics()
 stats = resp.json()
+
+
 
 # Ожидаемая структура stats:
 # {
