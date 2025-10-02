@@ -329,7 +329,7 @@ async def flights_stats(
 
     # 📈 расчёт avgDuration для каждого региона
     for rid, stats in region_stats.items():
-        stats["avgDuration"] = stats["duration"] / stats["flights"] if stats["flights"] else 0
+        stats["avgDuration"] = round(stats["duration"] / stats["flights"]) if stats["flights"] else 0
 
     # 📊 сортируем top по длительности
     flights_all.sort(key=lambda x: x["duration_min"] or 0, reverse=True)
