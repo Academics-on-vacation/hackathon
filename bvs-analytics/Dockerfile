@@ -22,6 +22,8 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Копируем код приложения
 COPY backend/ .
 
+COPY frontend/dist/ /frontend/dist/
+
 # Копируем файлы из data
 COPY data/ /app/data/
 
