@@ -94,20 +94,20 @@ def get_flights(
 # Статистика по региону
 # (SQLAlchemy, синхронно)
 # =============================
-@router.get("/api/flights_stats/region/{region_id}")
-def flights_stats_region(
+@router.get("/flights_stats/region/{region_id}")
+async def flights_stats_region(
     region_id: int,
     start_date: Optional[str] = Query(None, description="Начало диапазона dep_date (YYYY-MM-DD)"),
     end_date: Optional[str] = Query(None, description="Конец диапазона dep_date (YYYY-MM-DD)"),
     db: Session = Depends(get_db)
 ):
-    # Преобразуем строки в date
+    # 🗓 Преобразуем строки в date
     start_dt = datetime.strptime(start_date, "%Y-%m-%d").date() if start_date else None
     end_dt = datetime.strptime(end_date, "%Y-%m-%d").date() if end_date else None
 
-    # Строим SQL с параметрами
+    from sqlalchemy import text
     query = "SELECT * FROM flights_new WHERE region_id = :region_id"
-    params: Dict[str, Any] = {"region_id": region_id}
+    params = {"region_id": region_id}
 
     if start_dt and end_dt:
         query += " AND dep_date BETWEEN :start_date AND :end_date"
@@ -121,12 +121,13 @@ def flights_stats_region(
         params["end_date"] = end_dt
 
     result = db.execute(text(query), params)
-    rows = [dict(row._mapping) for row in result.fetchall()]
+    rows = result.fetchall()
+    rows = [dict(row._mapping) for row in rows]
 
     if not rows:
         raise HTTPException(status_code=404, detail="No flights for this region and date range")
 
-    # === сбор статистики ===
+    # === агрегаторы ===
     durations = []
     months = Counter()
     weekdays = Counter()
@@ -136,10 +137,12 @@ def flights_stats_region(
     flights = []
     region_name = rows[0]["region_name"]
 
+    # === собираем данные ===
     for r in rows:
         duration = r["duration_min"] or 0
         durations.append(duration)
 
+        # Время старта полёта
         start_ts = r["start_ts"]
         if start_ts:
             dt = start_ts if isinstance(start_ts, datetime) else datetime.fromisoformat(str(start_ts))
@@ -181,9 +184,11 @@ def flights_stats_region(
             "region_name": r["region_name"],
         })
 
+    # 📊 формируем топ-10 по длительности
     flights.sort(key=lambda x: x["duration_min"] or 0, reverse=True)
-    top = flights[:100]
+    top_10 = flights[:10]
 
+    # 🗓 Человеческие названия
     month_names = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
                    "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"]
     week_names = ["", "Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
@@ -210,10 +215,11 @@ def flights_stats_region(
                 "duration": sum(durations),
             }
         },
-        "top": top,
+        "top": top_10,  # ✅ добавили сюда топ-10 полётов
     }
 
     return stats
+
 
 
 # =============================
