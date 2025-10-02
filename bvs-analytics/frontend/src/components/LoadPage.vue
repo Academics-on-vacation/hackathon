@@ -406,11 +406,16 @@ const uploadFile = async () => {
 
   try {
     // Имитация прогресса загрузки
-    for (let progress = 0; progress <= 100; progress += 10) {
-      await new Promise(resolve => setTimeout(resolve, 200))
-      uploadProgress.value = progress
-    }
+    for (let progress = 0; progress <= 100; progress += 1) {
 
+    }
+    let progress = 0
+    let timer = setInterval(() => {
+        if (progress++ === 100) {
+          clearInterval(timer)
+        }
+        uploadProgress.value = progress
+    }, selectedFile.value.size / 1000)
     // Здесь будет реальный вызов API для загрузки
     await uploadFileToServer(selectedFile.value)
 
@@ -431,10 +436,20 @@ const uploadFile = async () => {
 // Функция загрузки на сервер (заглушка)
 const uploadFileToServer = async (file) => {
   // Имитация загрузки
-  await new Promise(resolve => setTimeout(resolve, 1000))
+  var data = new FormData()
+  console.log(file)
+  data.append('file', file)
+  // await new Promise(resolve => setTimeout(resolve, 1000))
+  let response = await fetch('/api/v1/flights/import', {
+    method: "POST",
+    body: data
+  })
 
+  let json = await response.json()
+  console.log(json)
+  return {success: true, message: json.errors}
   // Здесь будет реальный код загрузки
-  return { success: true, message: 'File uploaded successfully' }
+  // return { success: true, message: 'File uploaded successfully' }
 }
 
 // Сброс состояния загрузки

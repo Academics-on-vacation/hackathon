@@ -1,3 +1,4 @@
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, or_, desc, extract
 from typing import List, Optional, Dict, Any
@@ -40,17 +41,17 @@ class FlightService:
                 # Сохраняем полеты в БД
                 for flight_data in result.get('flights', []):
                     try:
-                        # Находим или создаем регион
-                        # region = self._get_or_create_region(flight_data.get('region_name'))
-                        #
+
                         # Создаем запись полета
                         flight_record = self.data_processor.create_flight_record(flight_data)
-                        # if region:
-                        #     flight_record['region_id'] = region.id
 
-                        # Создаем объект полета
-                        flight = FlightNew(**flight_record)
-                        self.db.add(flight)
+                        stmt = insert(FlightNew).values(**flight_record)
+
+                        stmt = stmt.on_conflict_do_nothing()
+
+                        # Выполняем запрос
+                        self.db.execute(stmt)
+
                         imported_count += 1
 
                     except Exception as e:
