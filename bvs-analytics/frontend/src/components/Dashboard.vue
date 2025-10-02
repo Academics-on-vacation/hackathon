@@ -408,7 +408,7 @@ async function getRegions() {
     return cached.value;
   }
 
-  const response = await fetch('/assets/russia.geojson');
+  const response = await fetch('https://imdibil.ru/api/map');
   const data = await response.json();
 
   await cache.set('regions', data.features);
