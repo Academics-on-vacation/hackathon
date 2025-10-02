@@ -111,7 +111,7 @@ async def serve_vue_app(full_path: str):
         raise HTTPException(status_code=404, detail="Route not found")
 
     # Проверяем статические файлы
-    if full_path.endswith(('.js', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.webp')):
+    if full_path.endswith(('.js', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.webp', '.geojson')):
         static_file = frontend_dist_path / full_path
         if static_file.exists():
             return FileResponse(static_file)
