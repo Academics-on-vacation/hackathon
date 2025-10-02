@@ -45,7 +45,7 @@
         </div>
         <div class="metric-content">
           <span class="metric-label">Регион</span>
-          <span class="metric-value">{{ getRegionName(flight.region) }}</span>
+          <span class="metric-value">{{ flight.region_name }}</span>
         </div>
       </div>
       <div class="metric-card" v-if="flight && calculatedDistance > 0">

@@ -351,7 +351,7 @@ class FlightsAnalyticsService:
         if not zone:
             return {"type": "FeatureCollection", "features": []}
         zone_type = zone.get('type')
-        if zone_type == 'round':
+        if zone_type == 'circle':
             return self._generate_round_geojson(zone)
         elif zone_type == 'polygon':
             return self._generate_polygon_geojson(zone)
@@ -362,10 +362,11 @@ class FlightsAnalyticsService:
 
     def _generate_round_geojson(self, zone: Dict[str, Any]) -> Dict[str, Any]:
         """Генерация GeoJSON для круглой зоны"""
+        zone = zone.get('data')
         center = zone.get('center', {})
         latitude = center.get('lat')
         longitude = center.get('lon')
-        radius = zone.get('radius', 0)
+        radius = int(zone.get('radius_nm', 0)) * 1000
         if not all([latitude is not None, longitude is not None]):
             return {"type": "FeatureCollection", "features": []}
         points = min(max(10, int(radius / 100)), 1000)
