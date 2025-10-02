@@ -225,7 +225,7 @@ async def flights_stats(
     end_date: Optional[str] = Query(None, description="Конец диапазона dep_date (YYYY-MM-DD)"),
     db: Session = Depends(get_db)
 ):
-    # ✅ Преобразуем строки в объекты date (если переданы)
+    # 🗓 Преобразуем строки в объекты date
     start_dt = datetime.strptime(start_date, "%Y-%m-%d").date() if start_date else None
     end_dt = datetime.strptime(end_date, "%Y-%m-%d").date() if end_date else None
 
@@ -233,7 +233,7 @@ async def flights_stats(
     query = "SELECT * FROM flights_new WHERE 1=1"
     params = {}
 
-    # ✅ Добавляем фильтрацию по дате, если передана
+    # ✅ Фильтрация по дате
     if start_dt and end_dt:
         query += " AND dep_date BETWEEN :start_date AND :end_date"
         params = {"start_date": start_dt, "end_date": end_dt}
@@ -246,30 +246,40 @@ async def flights_stats(
 
     result = db.execute(text(query), params)
     rows = result.fetchall()
-
-    # Преобразуем строки в словари
     rows_dicts = [dict(row._mapping) for row in rows]
 
     if not rows_dicts:
         raise HTTPException(status_code=404, detail="No flights found for this date range")
 
+    # === агрегаторы ===
     durations = []
+    months = Counter()
+    weekdays = Counter()
+    times = Counter()
     types = Counter()
     operators = Counter()
-
-    # ✅ Новый словарь для агрегированной статистики по регионам
     region_stats = {}
+    flights_all = []
 
+    # === собираем данные ===
     for r in rows_dicts:
         duration = r["duration_min"] or 0
         durations.append(duration)
 
-        # Типы и операторы
+        # Время старта полёта
+        start_ts = r["start_ts"]
+        if start_ts:
+            dt = start_ts if isinstance(start_ts, datetime) else datetime.fromisoformat(str(start_ts))
+            times[dt.hour] += 1
+            weekdays[dt.isoweekday()] += 1
+            months[dt.month - 1] += 1
+
+        # Тип и оператор
         types[r["uav_type"] or ""] += 1
         if r["operator"]:
             operators[r["operator"]] += 1
 
-        # ✅ Агрегация по регионам
+        # ✅ агрегация по регионам
         rid = str(r["region_id"])
         if rid not in region_stats:
             region_stats[rid] = {
@@ -280,20 +290,66 @@ async def flights_stats(
         region_stats[rid]["flights"] += 1
         region_stats[rid]["duration"] += duration
 
-    # ✅ После подсчёта добавляем avgDuration для каждого региона
-    for rid, stats in region_stats.items():
-        stats["avgDuration"] = (
-            stats["duration"] / stats["flights"] if stats["flights"] else 0
-        )
+        # ✈️ для top (опционально)
+        zone_data = json.loads(r["zone_data"]) if isinstance(r["zone_data"], str) else r["zone_data"]
+        flights_all.append({
+            "sid": r["sid"],
+            "center_name": r["center_name"],
+            "uav_type": r["uav_type"],
+            "operator": r["operator"],
+            "zone": zone_data,
+            "dep": {
+                "date": r["dep_date"].isoformat() if r["dep_date"] else None,
+                "time_hhmm": r["dep_time"].strftime("%H%M") if r["dep_time"] else None,
+                "lat": r["dep_lat"],
+                "lon": r["dep_lon"],
+                "aerodrome_code": r["dep_aerodrome_code"],
+                "aerodrome_name": r["dep_aerodrome_name"],
+            },
+            "arr": {
+                "date": r["arr_date"].isoformat() if r["arr_date"] else None,
+                "time_hhmm": r["arr_time"].strftime("%H%M") if r["arr_time"] else None,
+                "lat": r["arr_lat"],
+                "lon": r["arr_lon"],
+                "aerodrome_code": r["arr_aerodrome_code"],
+                "aerodrome_name": r["arr_aerodrome_name"],
+            },
+            "start_ts": r["start_ts"].isoformat() if r["start_ts"] else None,
+            "end_ts": r["end_ts"].isoformat() if r["end_ts"] else None,
+            "duration_min": r["duration_min"],
+            "region_id": r["region_id"],
+            "region_name": r["region_name"],
+        })
 
-    # 📊 Итоговый результат всей статистики
+    # 📈 расчёт avgDuration для каждого региона
+    for rid, stats in region_stats.items():
+        stats["avgDuration"] = stats["duration"] / stats["flights"] if stats["flights"] else 0
+
+    # 📊 сортируем top по длительности
+    flights_all.sort(key=lambda x: x["duration_min"] or 0, reverse=True)
+    top = flights_all[:100]
+
+    # 🗓 Человеческие названия месяцев и дней
+    month_names = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
+                   "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"]
+    week_names = ["", "Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
+
+    months_pre = {month_names[m]: months[m] for m in sorted(months)}
+    weekdays_pre = {week_names[d]: weekdays[d] for d in sorted(weekdays)}
+    times_pre = {f"{h}:00": times[h] for h in sorted(times)}
+
+    # ✅ финальный ответ
     result_data = {
         "duration": sum(durations),
         "avg_duration": sum(durations) / len(durations) if durations else 0,
         "flights": len(durations),
+        "month": months_pre,
+        "weekdays": weekdays_pre,
+        "times": times_pre,
         "types": dict(types),
         "operators": dict(operators),
-        "regions": region_stats   # ✅ Теперь возвращаем детализированную структуру
+        "regions": region_stats,
+        "top": top
     }
 
     return result_data
