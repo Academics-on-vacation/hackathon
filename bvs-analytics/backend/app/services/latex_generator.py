@@ -72,12 +72,6 @@ def generate_main_tex(begin_date: str | None, end_date: str | None, region: str 
         time_segment = f'до {end_date}'
 
     return fr"""\documentclass[a4paper,11pt]{{report}}
-\usepackage{{preamble}}
-\usepackage{{graphicx}}
-\usepackage{{float}}
-\usepackage[utf8]{{inputenc}}
-\usepackage[T2A]{{fontenc}}
-\usepackage[russian]{{babel}}
 
 \title{{{"Отчёт" if region else "Общий отчёт"} о статистике полётов БПЛА, {region + ", " if region else ""}{time_segment}}}
 \author{{Автоматически сгенерированный отчёт}}
@@ -115,16 +109,11 @@ def generate_preamble():
 \usepackage{graphicx}
 \usepackage{geometry}
 \geometry{a4paper, margin=2.5cm}
+\usepackage{{float}}
 
 % For tables
 \usepackage{array}
 \usepackage{booktabs}
-
-% For advanced graphics
-\usepackage{tikz}
-\usepackage{pgfplots}
-\pgfplotsset{width=0.9\textwidth, compat=1.9}
-\usepackage{float}
 """
 
 def generate_metrics_tex(data: Dict[str, Any], images : list[str] = []) -> str:
@@ -149,7 +138,7 @@ def generate_metrics_tex(data: Dict[str, Any], images : list[str] = []) -> str:
 """
     top_regions = sorted(data['regions'].values(), key=lambda x : x.get("flights"), reverse=True)[:15]
     top_regions_str = '\n'.join(f'    \\item {{ {region.get("name")} }}' for region in top_regions)
-    return fr"""\section{{Основные метрики}}
+    return fr"""\section*{{Основные метрики}}
 \begin{{itemize}}
     \item \textbf{{Общее количество полетов:}} {data['flights']}
     \item \textbf{{Суммарная длительность полетов:}} {data['duration']} минут
@@ -158,12 +147,12 @@ def generate_metrics_tex(data: Dict[str, Any], images : list[str] = []) -> str:
     \item \textbf{{Число операторов:}} {sum(1 for _ in data['operators'])}
 \end{{itemize}}
 
-\subsection{{Топ-15 регионов по количеству полётов}}
+\subsection*{{Топ-15 регионов по количеству полётов}}
 
 \begin{{enumerate}}
     {top_regions_str}
 \end{{enumerate}}
-""" + (("\\section{Графики}\n" + graphics) if graphics else "")
+""" + (("\\section*{Графики}\n" + graphics) if graphics else "")
 
 def compile_latex(temp_dir_path: Path) -> bool:
     """Compile LaTeX document using pdflatex"""
@@ -179,6 +168,7 @@ def compile_latex(temp_dir_path: Path) -> bool:
             )
             if result.returncode != 0:
                 print(f"LaTeX compilation error (run {i+1}):")
+                print(result.stdout)
                 print(result.stderr)
                 return False
         
