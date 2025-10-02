@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     
     # Logging
     LOG_LEVEL: str = "INFO"
+
+    # LaTeX Reports
+    LATEX_COMPILER: str = "xelatex"
+    COMPILE_RETRY: int = 3
     
     class Config:
         env_file = ".env"
