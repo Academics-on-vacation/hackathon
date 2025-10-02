@@ -29,11 +29,12 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
 
     # LaTeX Reports
-    LATEX_COMPILER: str = "xelatex"
+    LATEX_COMPILER: str = "pdflatex"
     COMPILE_RETRY: int = 3
     SAVE_DIR: str = "reports"
     IMAGE_DIR: str = "images"
-    
+    REPORT_DIR: str = "./reports"
+
     class Config:
         env_file = ".env"
         case_sensitive = True

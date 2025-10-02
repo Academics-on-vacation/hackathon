@@ -1,7 +1,6 @@
 import tempfile
 import shutil
 import subprocess
-from datetime import date
 from pathlib import Path
 from typing import Dict, Any
 from sqlalchemy.orm import Session
@@ -49,14 +48,16 @@ def generate_report(db : Session, begin_date: str | None = None, end_date: str |
         elif end_date:
             time_segment = f'before_{end_date}'
 
-        output_filename = f"report_{region_safe}_{time_segment}.pdf"
+        report_dir = Path(settings.REPORT_DIR)
+        report_dir.mkdir(exist_ok=True)
+        output_file =  report_dir / f"report_{region_safe}_{time_segment}.pdf"
         final_pdf = temp_dir_path / "main.pdf"
         if not final_pdf.exists():
             print("Error: report PDF wasn't generated")
             return ''
-        shutil.copy2(final_pdf, output_filename)
-        print(f"Report generated successfully: {output_filename}")
-        return output_filename
+        shutil.copy2(final_pdf, output_file)
+        print(f"Report generated successfully: {output_file}")
+        return output_file
         
 
 
@@ -94,7 +95,7 @@ def generate_main_tex(begin_date: str | None, end_date: str | None, region: str 
     
     \begin{{tabular}}{{ll}}
 %        \textbf{{Регион:}} & {region if region else 'все'} \\
-        \textbf{{Период:}} & {begin_date} -- {end_date} \\
+        \textbf{{Период:}} & {time_segment} \\
     \end{{tabular}}
     
     \vfill
@@ -164,35 +165,13 @@ def generate_metrics_tex(data: Dict[str, Any], images : list[str] = []) -> str:
 \end{{enumerate}}
 """ + (("\\section{Графики}\n" + graphics) if graphics else "")
 
-
-def generate_flights_tex(data: Dict[str, Any], extended: bool) -> str:
-    if not extended:
-        return "% Flight list section not included"
-    
-    return r"""\subsection{Детальный список полётов}
-
-\begin{table}[H]
-\centering
-\begin{tabular}{|l|l|l|l|}
-\hline
-\textbf{Время начала} & \textbf{Длительность (мин)} & \textbf{Регион} & \textbf{Тип БПЛА} \\
-\hline
-01.10.2023 08:30 & 45 & Москва & DJI Mavic 3 \\
-01.10.2023 09:15 & 32 & Московская область & DJI Air 2S \\
-01.10.2023 10:45 & 56 & Санкт-Петербург & Autel Evo II \\
-\hline
-\end{tabular}
-\caption{Пример данных полётов (замените на реальные данные)}
-\end{table}"""
-
-
 def compile_latex(temp_dir_path: Path) -> bool:
     """Compile LaTeX document using pdflatex"""
     try:
         # Run pdflatex twice to resolve references
         for i in range(2):
             result = subprocess.run(
-                ['pdflatex', '-interaction=nonstopmode', 'main.tex'],
+                [settings.LATEX_COMPILER, '-interaction=nonstopmode', 'main.tex'],
                 cwd=temp_dir_path,
                 capture_output=True,
                 text=True,
@@ -211,6 +190,3 @@ def compile_latex(temp_dir_path: Path) -> bool:
     except Exception as e:
         print(f"Error during LaTeX compilation: {e}")
         return False
-
-if __name__ == "__main__":
-    generate_report(date(1984, 1, 1), date(1985, 1, 1))

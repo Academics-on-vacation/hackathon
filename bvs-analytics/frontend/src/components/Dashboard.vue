@@ -2,11 +2,24 @@
        <DroneLoader :loading="!loaded" />
 
 
-      <div class="mb-8">
-        <h1 class="text-3xl font-bold text-gray-900 mb-2">Аналитика полетов БПЛА</h1>
-        <p class="text-gray-600">Мониторинг и анализ полетной активности беспилотных летательных аппаратов</p>
-      </div>
+      <div class="mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+    <div>
+      <h1 class="text-3xl font-bold text-gray-900 mb-2">Аналитика полетов БПЛА</h1>
+      <p class="text-gray-600">Мониторинг и анализ полетной активности беспилотных летательных аппаратов</p>
+    </div>
 
+  <button @click="exportToPDF"
+            :disabled="pdfLoading"
+            class="flex items-center gap-2 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-semibold px-6 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 disabled:from-green-400 disabled:to-green-500 disabled:cursor-not-allowed disabled:transform-none">
+      <svg v-if="pdfLoading" class="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+      </svg>
+      <svg v-else class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+      </svg>
+      {{ pdfLoading ? 'Формирование отчета...' : 'Экспорт в PDF' }}
+    </button>
+      </div>
       <!-- Фильтры - улучшенные -->
       <div class="bg-white p-6 rounded-2xl shadow-lg mb-8 border border-gray-100">
         <div class="flex flex-col sm:flex-row gap-4 items-end">
@@ -32,7 +45,9 @@
                     class="text-white rounded-lg bg-gray-600 px-6 py-3 font-medium">
               Сбросить
             </button>
+
           </div>
+
         </div>
       </div>
 
@@ -182,7 +197,7 @@ onMounted(() => {
 })
 
 const loaded = ref(false)
-
+const pdfLoading = ref(false) // Состояние загрузки PDF
 // Вычисляемые метрики
 const totalFlights = computed(() => Object.values(regionStats.value).reduce((sum, r) => sum + r.flights, 0))
 const totalDuration = computed(() => Object.values(regionStats.value).reduce((sum, r) => sum + r.duration, 0))
@@ -398,6 +413,54 @@ async function getRegions() {
 
   await cache.set('regions', data.features);
   return data.features;
+}
+
+
+const exportToPDF = async () => {
+  pdfLoading.value = true
+
+  try {
+    const response = await fetch('/report', {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      }
+    })
+
+    if (!response.ok) {
+      throw new Error(`Ошибка сервера: ${response.status}`)
+    }
+
+    // Получаем blob и создаем ссылку для скачивания
+    const blob = await response.blob()
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.style.display = 'none'
+    a.href = url
+
+    // Получаем имя файла из заголовков или используем стандартное
+    const contentDisposition = response.headers.get('Content-Disposition')
+    let filename = 'flight_report.pdf'
+
+    if (contentDisposition) {
+      const filenameMatch = contentDisposition.match(/filename="?(.+)"?/i)
+      if (filenameMatch && filenameMatch.length === 2) {
+        filename = filenameMatch[1]
+      }
+    }
+
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    window.URL.revokeObjectURL(url)
+    document.body.removeChild(a)
+
+  } catch (error) {
+    console.error('Ошибка при экспорте PDF:', error)
+    alert('Произошла ошибка при формировании отчета')
+  } finally {
+    pdfLoading.value = false
+  }
 }
 
 </script>
