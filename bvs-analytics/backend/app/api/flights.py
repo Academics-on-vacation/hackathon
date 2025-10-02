@@ -220,17 +220,20 @@ def flights_stats_region(
 # Общая статистика (у тебя уже была переделана под SQLAlchemy)
 # =============================
 @router.get("/flights_stats")
-def flights_stats(
+async def flights_stats(
     start_date: Optional[str] = Query(None, description="Начало диапазона dep_date (YYYY-MM-DD)"),
     end_date: Optional[str] = Query(None, description="Конец диапазона dep_date (YYYY-MM-DD)"),
     db: Session = Depends(get_db)
 ):
+    # ✅ Преобразуем строки в объекты date (если переданы)
     start_dt = datetime.strptime(start_date, "%Y-%m-%d").date() if start_date else None
     end_dt = datetime.strptime(end_date, "%Y-%m-%d").date() if end_date else None
 
+    from sqlalchemy import text
     query = "SELECT * FROM flights_new WHERE 1=1"
-    params: Dict[str, Any] = {}
+    params = {}
 
+    # ✅ Добавляем фильтрацию по дате, если передана
     if start_dt and end_dt:
         query += " AND dep_date BETWEEN :start_date AND :end_date"
         params = {"start_date": start_dt, "end_date": end_dt}
@@ -244,7 +247,7 @@ def flights_stats(
     result = db.execute(text(query), params)
     rows = result.fetchall()
 
-    # Приводим строки к dict, чтобы работать одинаково
+    # Преобразуем строки в словари
     rows_dicts = [dict(row._mapping) for row in rows]
 
     if not rows_dicts:
@@ -253,25 +256,48 @@ def flights_stats(
     durations = []
     types = Counter()
     operators = Counter()
-    regions = Counter()
+
+    # ✅ Новый словарь для агрегированной статистики по регионам
+    region_stats = {}
 
     for r in rows_dicts:
-        durations.append(r["duration_min"] or 0)
+        duration = r["duration_min"] or 0
+        durations.append(duration)
+
+        # Типы и операторы
         types[r["uav_type"] or ""] += 1
         if r["operator"]:
             operators[r["operator"]] += 1
-        regions[r["region_name"]] += 1
 
+        # ✅ Агрегация по регионам
+        rid = str(r["region_id"])
+        if rid not in region_stats:
+            region_stats[rid] = {
+                "name": r["region_name"],
+                "flights": 0,
+                "duration": 0
+            }
+        region_stats[rid]["flights"] += 1
+        region_stats[rid]["duration"] += duration
+
+    # ✅ После подсчёта добавляем avgDuration для каждого региона
+    for rid, stats in region_stats.items():
+        stats["avgDuration"] = (
+            stats["duration"] / stats["flights"] if stats["flights"] else 0
+        )
+
+    # 📊 Итоговый результат всей статистики
     result_data = {
         "duration": sum(durations),
         "avg_duration": sum(durations) / len(durations) if durations else 0,
         "flights": len(durations),
         "types": dict(types),
         "operators": dict(operators),
-        "regions": dict(regions)
+        "regions": region_stats   # ✅ Теперь возвращаем детализированную структуру
     }
 
     return result_data
+
 
 
 # =============================
