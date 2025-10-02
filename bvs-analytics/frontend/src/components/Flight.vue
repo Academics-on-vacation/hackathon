@@ -201,12 +201,12 @@ onMounted(async () => {
 const loadFlightData = async (flightId) => {
   // Загрузка данных полета по ID
   // Временные данные для примера
-  const resp = await fetch('https://imdibil.ru/api/flight/'+flightId)
+  const resp = await fetch('/api/v1/flights/api/flight/'+flightId)
   const data = await resp.json()
 
   flight.value = data
 
-  const zone_resp = await fetch('https://imdibil.ru/api/zone/'+flightId)
+  const zone_resp = await fetch('/api/v1/flights/zone/'+flightId+'/geojson')
   zone.value = await zone_resp.json()
   console.log(zone.value)
   console.log(flight.value)

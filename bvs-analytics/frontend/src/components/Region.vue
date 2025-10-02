@@ -264,8 +264,7 @@ const props = defineProps({
 const loadRegions = async () => {
   try {
 
-    const response_fl = await fetch('https://imdibil.ru/api/flights_stats/region/'+props.id)
-    console.log('https://imdibil.ru/api/flights_stats/region/'+props.id)
+    const response_fl = await fetch('/api/v1/flights/flights_stats/region/'+props.id)
     const data_fl = await response_fl.json()
     flightsData.value = data_fl.flights
     regionStats.value = data_fl.regions

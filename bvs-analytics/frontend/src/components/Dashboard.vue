@@ -277,7 +277,7 @@ const loadRegions = async () => {
 
 
 
-    const response_fl = await fetch('https://imdibil.ru/api/flights_stats')
+    const response_fl = await fetch('api/v1/flights/flights_stats')
     const data_fl = await response_fl.json()
     flightsData.value = data_fl.flights
     regionStats.value = data_fl.regions
@@ -368,7 +368,7 @@ async function getRegions() {
     return cached.value;
   }
 
-  const response = await fetch('https://imdibil.ru/api/map');
+  const response = await fetch('/assets/russia.geojson');
   const data = await response.json();
 
   await cache.set('regions', data.features);

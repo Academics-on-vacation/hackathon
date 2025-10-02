@@ -281,7 +281,7 @@ const goToRegionStats = (regionId) => {
 // Загрузка данных
 onMounted(async () => {
   // Имитация загрузки данных
-  let response = await fetch('https://imdibil.ru/api/regions')
+  let response = await fetch('/api/v1/flights/api/regions')
   let data = await response.json()
   regions.value = data
   regions.value.forEach((r) => {

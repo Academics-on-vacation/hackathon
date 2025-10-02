@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -37,8 +38,13 @@ async def lifespan(app: FastAPI):
 
     if frontend_dist_path.exists():
         logger.info(f"Frontend found at: {frontend_dist_path}")
+        # Логируем содержимое для отладки
+        for item in frontend_dist_path.rglob("*"):
+            if item.is_file():
+                logger.debug(f"Frontend file: {item.relative_to(frontend_dist_path)}")
     else:
         logger.warning(f"Frontend not found at: {frontend_dist_path}")
+
     # Инициализируем базу данных с поддержкой формата 2025.xlsx
     try:
         init_database()
@@ -73,44 +79,44 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ПЕРВЫМ ДЕЛОМ - подключаем API роутеры
+# ВСЕ API РОУТЕРЫ ДОЛЖНЫ БЫТЬ ЗДЕСЬ - ПЕРВЫМИ!
 app.include_router(
     flights_router,
     prefix=f"{settings.API_V1_STR}",
     tags=["flights"]
 )
+
 app.include_router(
     auth_router,
     tags=["auth"]
 )
 
-# Затем - статические файлы фронтенда
-if frontend_dist_path.exists():
-    # Vite создает assets вместо static
-    assets_path = frontend_dist_path / "assets"
-    if assets_path.exists():
-        app.mount("/assets", StaticFiles(directory=assets_path), name="assets")
+# 3. Фронтенд с префиксом /app
+@app.get("/{full_path:path}")
+async def serve_vue_app(full_path: str):
+    """Обслуживает Vue приложение для всех путей (SPA)"""
+    # ИСКЛЮЧАЕМ ВСЕ API ПУТИ
+    excluded_paths = [
+        "api/", "docs", "redoc", "health", "openapi.json",
+        f"{settings.API_V1_STR}/", "auth/"
+    ]
 
+    if any(full_path.startswith(path) for path in excluded_paths):
+        raise HTTPException(status_code=404, detail="Route not found")
 
-# API роуты должны быть объявлены ДО catch-all роута
-@app.get("/")
-async def root():
-    """Корневой эндпоинт - обслуживает Vue приложение"""
+    # Проверяем статические файлы
+    if full_path.endswith(('.js', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.webp')):
+        static_file = frontend_dist_path / full_path
+        if static_file.exists():
+            return FileResponse(static_file)
+
+    # Все остальные пути ведут на index.html
     if frontend_dist_path.exists():
         index_file = frontend_dist_path / "index.html"
         if index_file.exists():
             return FileResponse(index_file)
 
-    # Если фронтенд не собран, показываем API информацию
-    return {
-        "message": "BVS Analytics API",
-        "version": settings.VERSION,
-        "docs": "/docs",
-        "health": "/health",
-        "frontend_status": "not_built" if not frontend_dist_path.exists() else "available"
-    }
-
-
+    raise HTTPException(status_code=404, detail="Frontend not found")
 @app.get("/health")
 async def health_check():
     """Проверка состояния сервиса"""
@@ -135,19 +141,6 @@ async def global_exception_handler(request, exc):
 
 
 # ПОСЛЕДНИМ - catch-all роут для Vue SPA
-@app.get("/{full_path:path}")
-async def serve_vue_app(full_path: str):
-    """Обслуживает Vue приложение для всех путей (SPA)"""
-    # Проверяем, не начинается ли путь с /api/
-    if full_path.startswith("api/"):
-        raise HTTPException(status_code=404, detail="API route not found")
-
-    if frontend_dist_path.exists():
-        index_file = frontend_dist_path / "index.html"
-        if index_file.exists():
-            return FileResponse(index_file)
-
-    raise HTTPException(status_code=404, detail="Frontend not found")
 
 
 if __name__ == "__main__":

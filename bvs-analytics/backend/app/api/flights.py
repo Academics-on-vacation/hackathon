@@ -531,6 +531,243 @@ def get_flight(sid: str, db: Session = Depends(get_db)):
     return flight
 
 
+@router.get("/zone/{sid}/geojson")
+def get_flight_zone_geojson(sid: str, db: Session = Depends(get_db)):
+    """
+    Получение GeoJSON зоны полета по sid
+    """
+    # Ищем полет в базе по sid
+    result = db.execute(text("SELECT * FROM flights_new WHERE sid = :sid"), {"sid": sid})
+    row = result.fetchone()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Flight not found")
+
+    flight = dict(row._mapping)
+
+    # Обрабатываем zone_data
+    zone_data = flight["zone_data"]
+    if isinstance(zone_data, str):
+        try:
+            zone = json.loads(zone_data)
+        except json.JSONDecodeError:
+            zone = zone_data
+    else:
+        zone = zone_data
+
+    if not zone:
+        return {"type": "FeatureCollection", "features": []}
+
+    return generate_geojson_from_zone(zone)
+
+
+def generate_geojson_from_zone(zone: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Генерация GeoJSON из данных зоны
+    """
+    if not zone:
+        return {"type": "FeatureCollection", "features": []}
+
+    zone_type = zone.get('type')
+
+    if zone_type == 'round':
+        return generate_round_geojson(zone)
+    elif zone_type == 'polygon':
+        return generate_polygon_geojson(zone)
+    elif 'zones' in zone:
+        return generate_multizone_geojson(zone)
+    else:
+        return {"type": "FeatureCollection", "features": []}
+
+
+def generate_round_geojson(zone: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Генерация GeoJSON для круглой зоны
+    """
+    center = zone.get('center', {})
+    latitude = center.get('lat')
+    longitude = center.get('lon')
+    radius = zone.get('radius', 0)
+
+    if not all([latitude is not None, longitude is not None]):
+        return {"type": "FeatureCollection", "features": []}
+
+    # Количество точек для аппроксимации окружности
+    points = min(max(10, int(radius / 100)), 1000)  # Адаптивное количество точек
+
+    coordinates = []
+
+    # Коэффициенты преобразования (приближенные)
+    lat_per_meter = 1 / 111320.0  # 1 градус широты ≈ 111.32 км
+    lon_per_meter = 1 / (111320.0 * math.cos(math.radians(latitude)))  # Зависит от широты
+
+    for i in range(points + 1):
+        angle = 2 * math.pi * i / points
+
+        # Смещение в метрах
+        dx = radius * math.cos(angle)
+        dy = radius * math.sin(angle)
+
+        # Преобразуем в градусы
+        point_lat = latitude + dy * lat_per_meter
+        point_lon = longitude + dx * lon_per_meter
+
+        coordinates.append([point_lon, point_lat])
+
+    # Замыкаем полигон
+    if coordinates and coordinates[0] != coordinates[-1]:
+        coordinates.append(coordinates[0])
+
+    return {
+        'type': 'FeatureCollection',
+        'features': [
+            {
+                'type': 'Feature',
+                'geometry': {
+                    'type': 'Polygon',
+                    'coordinates': [coordinates]
+                },
+                'properties': {
+                    'center': [longitude, latitude],
+                    'radius': radius
+                }
+            }
+        ]
+    }
+
+
+def generate_polygon_geojson(zone: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Генерация GeoJSON для полигональной зоны
+    """
+    zone_data = zone.get('data', {})
+    coordinates_data = zone_data.get('coordinates', [])
+
+    if not coordinates_data:
+        return {"type": "FeatureCollection", "features": []}
+
+    coordinates = []
+    for coord in coordinates_data:
+        if isinstance(coord, dict):
+            # Формат: {'lat': x, 'lon': y}
+            coordinates.append([coord.get('lon', 0), coord.get('lat', 0)])
+        elif isinstance(coord, list) and len(coord) >= 2:
+            # Формат: [lon, lat] или [lat, lon]
+            if isinstance(coord[0], (int, float)) and isinstance(coord[1], (int, float)):
+                coordinates.append([float(coord[0]), float(coord[1])])
+
+    # Замыкаем полигон, если последняя точка не совпадает с первой
+    if coordinates and coordinates[0] != coordinates[-1]:
+        coordinates.append(coordinates[0])
+
+    return {
+        'type': 'FeatureCollection',
+        'features': [
+            {
+                'type': 'Feature',
+                'geometry': {
+                    'type': 'Polygon',
+                    'coordinates': [coordinates]
+                },
+                'properties': {
+                    'zone': 'zone'
+                }
+            }
+        ]
+    }
+
+
+def generate_multizone_geojson(zone: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Генерация GeoJSON для множественных зон
+    """
+    zones = zone.get('zones', [])
+    features = []
+
+    for zone_item in zones:
+        zone_type = zone_item.get('type')
+
+        if zone_type == 'polygon' and 'coordinates' in zone_item:
+            coordinates_data = zone_item['coordinates']
+            coordinates = []
+
+            for coord in coordinates_data:
+                if isinstance(coord, list) and len(coord) >= 2:
+                    # Предполагаем формат [lat, lon] или [lon, lat]
+                    # Определяем порядок координат по величинам
+                    if abs(coord[0]) <= 180 and abs(coord[1]) <= 90:
+                        # Вероятно [lon, lat]
+                        coordinates.append([float(coord[0]), float(coord[1])])
+                    else:
+                        # Вероятно [lat, lon] - меняем местами
+                        coordinates.append([float(coord[1]), float(coord[0])])
+
+            # Замыкаем полигон
+            if coordinates and coordinates[0] != coordinates[-1]:
+                coordinates.append(coordinates[0])
+
+            if len(coordinates) >= 3:  # Минимум 3 точки для полигона
+                features.append({
+                    'type': 'Feature',
+                    'geometry': {
+                        'type': 'Polygon',
+                        'coordinates': [coordinates]
+                    },
+                    'properties': {
+                        'zone': 'zone'
+                    }
+                })
+
+        elif zone_type == 'circle' and 'center' in zone_item and 'radius' in zone_item:
+            center = zone_item['center']
+            radius = zone_item['radius'] * 1000  # км в метры
+
+            if isinstance(center, list) and len(center) >= 2:
+                # Определяем порядок координат
+                if abs(center[0]) <= 180 and abs(center[1]) <= 90:
+                    longitude, latitude = center[0], center[1]
+                else:
+                    latitude, longitude = center[0], center[1]
+
+                points = min(max(10, int(radius / 100)), 1000)
+                circle_coordinates = []
+
+                # Коэффициенты преобразования
+                lat_per_meter = 1 / 111320.0
+                lon_per_meter = 1 / (111320.0 * math.cos(math.radians(latitude)))
+
+                for i in range(points + 1):
+                    angle = 2 * math.pi * i / points
+
+                    dx = radius * math.cos(angle)
+                    dy = radius * math.sin(angle)
+
+                    point_lat = latitude + dy * lat_per_meter
+                    point_lon = longitude + dx * lon_per_meter
+
+                    circle_coordinates.append([point_lon, point_lat])
+
+                # Замыкаем полигон
+                if circle_coordinates and circle_coordinates[0] != circle_coordinates[-1]:
+                    circle_coordinates.append(circle_coordinates[0])
+
+                features.append({
+                    'type': 'Feature',
+                    'geometry': {
+                        'type': 'Polygon',
+                        'coordinates': [circle_coordinates]
+                    },
+                    'properties': {
+                        'center': [longitude, latitude],
+                        'radius': radius
+                    }
+                })
+
+    return {
+        'type': 'FeatureCollection',
+        'features': features
+    }
+
 # =============================
 # Healthcheck — SQLAlchemy
 # =============================

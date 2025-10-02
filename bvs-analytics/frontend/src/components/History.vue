@@ -329,7 +329,7 @@ const loadFlights = async () => {
   loading.value = true
   try {
     // Загрузка данных из API
-    const response = await fetch('https://imdibil.ru/api/flights')
+    const response = await fetch('/api/v1/flights/api/flights')
     const data = await response.json()
     flights.value = data.flights || []
   } catch (error) {

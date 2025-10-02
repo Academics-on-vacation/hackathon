@@ -9,13 +9,13 @@ export default defineConfig({
             '@': fileURLToPath(new URL('./src', import.meta.url))
         }
     },
-    // Настройки для сборки
+    // ????????? ??? ??????
     build: {
         outDir: 'dist',
-        assetsDir: 'assets', // Все ассеты будут в папке assets
+        assetsDir: 'assets', // ??? ?????? ????? ? ????? assets
         rollupOptions: {
             output: {
-                // Все JS и CSS файлы будут в assets
+                // ??? JS ? CSS ????? ????? ? assets
                 chunkFileNames: 'assets/js/[name]-[hash].js',
                 entryFileNames: 'assets/js/[name]-[hash].js',
                 assetFileNames: ({name}) => {

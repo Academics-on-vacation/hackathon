@@ -53,7 +53,7 @@
               </div>
               <input
                   id="email"
-                  v-model="credentials.email"
+                  v-model="credentials.username"
                   type="text"
                   required
                   class="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
@@ -137,7 +137,7 @@ const router = useRouter()
 const { login } = useAuth()
 
 const credentials = ref({
-  email: '',
+  username: '',
   password: ''
 })
 

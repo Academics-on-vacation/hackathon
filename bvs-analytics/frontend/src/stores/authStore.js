@@ -9,32 +9,32 @@ export function useAuth() {
 
     const login = async (credentials) => {
         try {
-            // const response = await fetch('https://imdibil.ru/api/auth/login', {
-            //     method: 'POST',
-            //     headers: {
-            //         'Content-Type': 'application/json',
-            //     },
-            //     body: JSON.stringify(credentials),
-            // })
-            //
-            // if (!response.ok) {
-            //     throw new Error('Неверные учетные данные')
-            // }
-            //
-            // const data = await response.json()
+            const response = await fetch('/auth', {
+                method: 'POST',
+                headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+                },
+                body: "username="+credentials.username+"&password="+credentials.password,
+            })
+
+            if (!response.ok) {
+                throw new Error('Неверные учетные данные')
+            }
+
+            const data = await response.json()
 
             // Store token and user data
 
-            let data = {
-                token: "test",
-                user: {
-                    name: "test",
-                    email: "test",
-                    role: "admin"
-                }
-            }
-
-            token.value = data.token
+            // let data = {
+            //     token: "test",
+            //     user: {
+            //         name: "test",
+            //         email: "test",
+            //         role: "admin"
+            //     }
+            // }
+            //
+            token.value = data.token.access_token
             user.value = data.user
 
             localStorage.setItem('auth_token', data.token)

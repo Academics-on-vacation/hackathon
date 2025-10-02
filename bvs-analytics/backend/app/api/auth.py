@@ -8,7 +8,8 @@ from fastapi.security import (
     OAuth2PasswordBearer,
     OAuth2PasswordRequestForm,
 )
-from jose import JWTError, jwt
+from jose import jwt
+from jose import JWTError
 from passlib.context import CryptContext
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -126,6 +127,7 @@ async def login_frontend(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     db: Session = Depends(get_db)
 ):
+    print('test')
     token = await login_for_access_token(form_data, db)
     return {
         'token' : token,

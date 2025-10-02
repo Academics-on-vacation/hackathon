@@ -55,7 +55,7 @@ UPLOAD_DIR=./uploads
     # Запускаем сервер
     uvicorn.run(
         "app.main:app",
-        host="0.0.0.0",
+        host="127.0.0.1",
         port=8800,
         reload=True,
         log_level="info"
