@@ -14,6 +14,8 @@ from .core.database import engine, Base, init_database
 from .api.flights import router as flights_router
 from .api.auth import auth as auth_router
 from .api.report import report as report_router
+from .api.profiling import router as profiling_router
+from .middleware.profiling import ProfilingMiddleware
 
 # Настройка логирования
 logging.basicConfig(
@@ -80,6 +82,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Добавляем middleware для профилирования
+app.add_middleware(
+    ProfilingMiddleware,
+    profiler_type="cprofile",  # или "pyinstrument" для более детального анализа
+    profile_all=False,  # профилировать только когда включено через API
+    min_duration=0.0  # минимальная длительность для логирования
+)
+
 # ВСЕ API РОУТЕРЫ ДОЛЖНЫ БЫТЬ ЗДЕСЬ - ПЕРВЫМИ!
 app.include_router(
     flights_router,
@@ -95,6 +105,11 @@ app.include_router(
 app.include_router(
     report_router,
     tags=["report"]
+)
+
+app.include_router(
+    profiling_router,
+    tags=["profiling"]
 )
 
 # 3. Фронтенд с префиксом /app

@@ -24,3 +24,6 @@ structlog==23.2.0
 pytest
 httpx
 pydantic-settings
+py-spy==0.3.14
+memory-profiler==0.61.0
+pyinstrument==4.6.2
