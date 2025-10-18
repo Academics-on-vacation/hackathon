@@ -4,7 +4,6 @@ FROM python:3.11-slim
 RUN apt-get update && apt-get install -y \
     gcc \
     libpq-dev \
-    texlive-full \
     && rm -rf /var/lib/apt/lists/*
 
 # Устанавливаем рабочую директорию
@@ -19,8 +18,6 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 # Копируем код приложения
 COPY backend/ .
-
-COPY frontend/dist/ /frontend/dist/
 
 # Копируем файлы из data
 COPY data/ /app/data/
