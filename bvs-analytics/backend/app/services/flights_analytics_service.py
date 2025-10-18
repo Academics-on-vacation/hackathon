@@ -275,19 +275,94 @@ class FlightsAnalyticsService:
             "top": top
         }
 
-    def get_all_flights(self) -> Dict[str, Any]:
-        result = self.db.execute(text("SELECT * FROM flights_new"))
+    def get_all_flights(
+        self,
+        skip: int = 0,
+        limit: int = 100,
+        search: Optional[str] = None,
+        uav_type: Optional[str] = None,
+        region_id: Optional[int] = None,
+        sort_by: Optional[str] = None,
+        sort_order: Optional[str] = "desc"
+    ) -> Dict[str, Any]:
+        """Получение полетов с пагинацией, фильтрацией и сортировкой"""
+        # Базовый запрос для подсчета общего количества
+        count_query = "SELECT COUNT(*) as total FROM flights_new WHERE 1=1"
+        # Запрос с вычислением длительности, если она NULL
+        data_query = """
+            SELECT *,
+                CASE
+                    WHEN duration_min IS NULL OR duration_min = 0 THEN
+                        EXTRACT(EPOCH FROM (end_ts - start_ts)) / 60
+                    ELSE duration_min
+                END as calculated_duration
+            FROM flights_new
+            WHERE 1=1
+        """
+        params = {}
+        
+        # Применяем фильтры
+        filter_conditions = []
+        if search:
+            filter_conditions.append("(sid ILIKE :search OR uav_type ILIKE :search OR operator ILIKE :search)")
+            params["search"] = f"%{search}%"
+        
+        if uav_type:
+            filter_conditions.append("uav_type = :uav_type")
+            params["uav_type"] = uav_type
+        
+        if region_id is not None:
+            filter_conditions.append("region_id = :region_id")
+            params["region_id"] = region_id
+        
+        # Добавляем условия к запросам
+        if filter_conditions:
+            filter_str = " AND " + " AND ".join(filter_conditions)
+            count_query += filter_str
+            data_query += filter_str
+        
+        # Получаем общее количество записей
+        total_result = self.db.execute(text(count_query), params).fetchone()
+        total_count = total_result[0] if total_result else 0
+        
+        # Маппинг полей сортировки фронтенда на поля БД
+        sort_field_mapping = {
+            'sid': 'sid',
+            'uav_type': 'uav_type',
+            'dep.date': 'start_ts',
+            'arr.date': 'end_ts',
+            'duration_min': 'calculated_duration',
+            'region': 'region_name',
+            'operator': 'operator'
+        }
+        
+        # Определяем поле и направление сортировки
+        sort_field = sort_field_mapping.get(sort_by, 'start_ts')
+        sort_direction = 'ASC' if sort_order == 'asc' else 'DESC'
+        
+        # Добавляем сортировку и пагинацию
+        data_query += f" ORDER BY {sort_field} {sort_direction} LIMIT :limit OFFSET :skip"
+        params["limit"] = limit
+        params["skip"] = skip
+        
+        # Получаем данные
+        result = self.db.execute(text(data_query), params)
         rows = [dict(row._mapping) for row in result.fetchall()]
-        if not rows:
-            raise HTTPException(status_code=404, detail="No flights found")
+        
         flights = []
         for r in rows:
+            # Используем вычисленную длительность
+            if 'calculated_duration' in r and r['calculated_duration']:
+                r['duration_min'] = int(r['calculated_duration'])
+            
             zone_data = json.loads(r["zone_data"]) if isinstance(r["zone_data"], str) else r["zone_data"]
             flights.append(self._format_flight_data(r, zone_data))
+        
         meta = {
-            "source_excel": "2025.xlsx",
-            "sheet": "Result_1",
-            "parsed_rows": len(rows),
+            "total": total_count,
+            "skip": skip,
+            "limit": limit,
+            "returned": len(flights),
             "generated_at": datetime.now(timezone.utc).isoformat()
         }
         return {"meta": meta, "flights": flights}

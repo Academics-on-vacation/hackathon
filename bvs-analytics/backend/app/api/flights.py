@@ -68,9 +68,18 @@ def flights_stats(
     return service.get_general_statistics(start_date, end_date)
 
 @router.get("/api/flights")
-def flights_all(db: Session = Depends(get_db)):
+def flights_all(
+    skip: int = Query(0, ge=0, description="Количество записей для пропуска"),
+    limit: int = Query(100, ge=1, le=1000, description="Максимальное количество записей"),
+    search: Optional[str] = Query(None, description="Поиск по ID, типу БПЛА, оператору"),
+    uav_type: Optional[str] = Query(None, description="Фильтр по типу БПЛА"),
+    region_id: Optional[int] = Query(None, description="Фильтр по ID региона"),
+    sort_by: Optional[str] = Query(None, description="Поле для сортировки"),
+    sort_order: Optional[str] = Query("desc", description="Направление сортировки (asc/desc)"),
+    db: Session = Depends(get_db)
+):
     service = FlightsAnalyticsService(db)
-    return service.get_all_flights()
+    return service.get_all_flights(skip, limit, search, uav_type, region_id, sort_by, sort_order)
 
 @router.get("/api/regions")
 def regions_stats(db: Session = Depends(get_db)):

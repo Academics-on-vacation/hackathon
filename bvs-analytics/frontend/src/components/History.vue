@@ -302,6 +302,7 @@ const router = useRouter()
 // Данные
 const flights = ref([])
 const loading = ref(true)
+const totalFlightsCount = ref(0)
 
 // Поиск и фильтры
 const searchQuery = ref('')
@@ -328,21 +329,49 @@ onMounted(async () => {
 const loadFlights = async () => {
   loading.value = true
   try {
-    // Загрузка данных из API
-    const response = await fetch('/api/v1/flights/api/flights')
+    // Вычисляем offset для пагинации
+    const skip = (currentPage.value - 1) * pageSize.value
+    
+    // Формируем параметры запроса
+    const params = new URLSearchParams({
+      skip: skip.toString(),
+      limit: pageSize.value.toString()
+    })
+    
+    // Добавляем фильтры если они есть
+    if (searchQuery.value) {
+      params.append('search', searchQuery.value)
+    }
+    if (filters.value.uavType) {
+      params.append('uav_type', filters.value.uavType)
+    }
+    if (filters.value.region) {
+      params.append('region_id', filters.value.region)
+    }
+    
+    // Добавляем параметры сортировки
+    if (sortField.value) {
+      params.append('sort_by', sortField.value)
+      params.append('sort_order', sortDirection.value)
+    }
+    
+    // Загрузка данных из API с пагинацией
+    const response = await fetch(`/api/v1/flights/api/flights?${params.toString()}`)
     const data = await response.json()
+    
     flights.value = data.flights || []
+    totalFlightsCount.value = data.meta?.total || 0
   } catch (error) {
     console.error('Ошибка загрузки данных:', error)
-    // Заглушка для демонстрации
-    flights.value = generateDemoData()
+    flights.value = []
+    totalFlightsCount.value = 0
   } finally {
     loading.value = false
   }
 }
 
 // Вычисляемые свойства
-const totalFlights = computed(() => flights.value.length)
+const totalFlights = computed(() => totalFlightsCount.value)
 
 const uavTypes = computed(() => {
   return [...new Set(flights.value.map(f => f.uav_type))].filter(Boolean).sort()
@@ -351,7 +380,7 @@ const uavTypes = computed(() => {
 const regions = computed(() => {
   let list = {}
   flights.value.forEach((f) => {
-    list[f.region] = f.region_name
+    list[f.region_id] = f.region_name
   });
 
   let list_ret = [];
@@ -361,97 +390,25 @@ const regions = computed(() => {
   return list_ret
 })
 
-// Фильтрация и поиск
-const filteredFlights = computed(() => {
-  let filtered = flights.value
+// Фильтрация и поиск теперь на сервере, поэтому просто возвращаем данные
+const filteredFlights = computed(() => flights.value)
 
-  // Поиск
-  if (searchQuery.value) {
-    const query = searchQuery.value.toLowerCase()
-    filtered = filtered.filter(flight =>
-        flight.sid.toLowerCase().includes(query)
-        // flight.uav_type.toLowerCase().includes(query) ||
-        // (flight.operator && flight.operator.toLowerCase().includes(query)) ||
-        // flight.center_name.toLowerCase().includes(query)
-    )
-  }
-
-  // Фильтры
-  if (filters.value.uavType) {
-    filtered = filtered.filter(flight => flight.uav_type === filters.value.uavType)
-  }
-
-  if (filters.value.region) {
-    filtered = filtered.filter(flight => flight.region === parseInt(filters.value.region))
-  }
-
-  if (filters.value.period !== 'all') {
-    const now = new Date()
-    let startDate
-
-    switch (filters.value.period) {
-      case 'today':
-        startDate = new Date(now.setHours(0, 0, 0, 0))
-        break
-      case 'week':
-        startDate = new Date(now.setDate(now.getDate() - 7))
-        break
-      case 'month':
-        startDate = new Date(now.setMonth(now.getMonth() - 1))
-        break
-      case 'year':
-        startDate = new Date(now.setFullYear(now.getFullYear() - 1))
-        break
-    }
-
-    filtered = filtered.filter(flight => new Date(flight.dep.date) >= startDate)
-  }
-
-  return filtered
-})
-
-// Сортировка
+// Сортировка теперь на сервере, но оставляем для локальной сортировки если нужно
 const sortedFlights = computed(() => {
-  const sorted = [...filteredFlights.value]
-
-  return sorted.sort((a, b) => {
-    let aValue, bValue
-
-    if (sortField.value === 'dep.date') {
-      aValue = new Date(a.dep.date + 'T' + a.dep.time_hhmm)
-      bValue = new Date(b.dep.date + 'T' + b.dep.time_hhmm)
-    } else if (sortField.value === 'arr.date') {
-      aValue = new Date(a.arr.date + 'T' + a.arr.time_hhmm)
-      bValue = new Date(b.arr.date + 'T' + b.arr.time_hhmm)
-    } else if (sortField.value.includes('.')) {
-      // Для вложенных свойств
-      const keys = sortField.value.split('.')
-      aValue = keys.reduce((obj, key) => obj[key], a)
-      bValue = keys.reduce((obj, key) => obj[key], b)
-    } else {
-      aValue = a[sortField.value]
-      bValue = b[sortField.value]
-    }
-
-    if (sortDirection.value === 'asc') {
-      return aValue > bValue ? 1 : -1
-    } else {
-      return aValue < bValue ? 1 : -1
-    }
-  })
+  // Данные уже отсортированы на сервере, просто возвращаем их
+  return flights.value
 })
 
 // Пагинация
-const totalPages = computed(() => Math.ceil(sortedFlights.value.length / pageSize.value))
+const totalPages = computed(() => Math.ceil(totalFlightsCount.value / pageSize.value))
 
 const displayedFlights = computed(() => {
-  const start = (currentPage.value - 1) * pageSize.value
-  const end = start + pageSize.value
-  return sortedFlights.value.slice(start, end)
+  // Данные уже пагинированы на сервере
+  return flights.value
 })
 
 const startItem = computed(() => (currentPage.value - 1) * pageSize.value + 1)
-const endItem = computed(() => Math.min(currentPage.value * pageSize.value, sortedFlights.value.length))
+const endItem = computed(() => Math.min(currentPage.value * pageSize.value, totalFlightsCount.value))
 
 const visiblePages = computed(() => {
   const pages = []
@@ -492,6 +449,7 @@ const sortBy = (field) => {
     sortDirection.value = 'desc'
   }
   currentPage.value = 1
+  loadFlights()
 }
 
 const getSortClass = (field) => {
@@ -508,15 +466,18 @@ const getSortSymbol = (field) => {
 
 const onSearch = () => {
   currentPage.value = 1
+  loadFlights()
 }
 
 const clearSearch = () => {
   searchQuery.value = ''
   currentPage.value = 1
+  loadFlights()
 }
 
 const applyFilters = () => {
   currentPage.value = 1
+  loadFlights()
 }
 
 const resetFilters = () => {
@@ -528,29 +489,34 @@ const resetFilters = () => {
   }
   searchQuery.value = ''
   currentPage.value = 1
+  loadFlights()
 }
 
 // Пагинация
 const nextPage = () => {
   if (currentPage.value < totalPages.value) {
     currentPage.value++
+    loadFlights()
   }
 }
 
 const prevPage = () => {
   if (currentPage.value > 1) {
     currentPage.value--
+    loadFlights()
   }
 }
 
 const goToPage = (page) => {
   if (page !== '...') {
     currentPage.value = page
+    loadFlights()
   }
 }
 
 const onPageSizeChange = () => {
   currentPage.value = 1
+  loadFlights()
 }
 
 // Действия с рейсами
@@ -623,9 +589,15 @@ const generateDemoData = () => {
   }))
 }
 
-// Наблюдатели
-watch([sortField, sortDirection], () => {
-  currentPage.value = 1
+// Наблюдатели для автоматической перезагрузки при изменении поиска
+let searchTimeout = null
+watch(searchQuery, () => {
+  // Debounce для поиска - ждем 500мс после последнего ввода
+  clearTimeout(searchTimeout)
+  searchTimeout = setTimeout(() => {
+    currentPage.value = 1
+    loadFlights()
+  }, 500)
 })
 </script>
 
