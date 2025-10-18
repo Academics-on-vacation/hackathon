@@ -125,24 +125,142 @@ class FlightsAnalyticsService:
     ) -> Dict[str, Any]:
         start_dt = self._parse_date_safe(start_date, "start_date")
         end_dt = self._parse_date_safe(end_date, "end_date")
-        query = "SELECT * FROM flights_new WHERE region_id = :region_id"
+        
         params = {"region_id": region_id}
+        date_filter = "WHERE region_id = :region_id"
         if start_dt and end_dt:
-            query += " AND dep_date BETWEEN :start_date AND :end_date"
+            date_filter += " AND dep_date BETWEEN :start_date AND :end_date"
             params["start_date"] = start_dt
             params["end_date"] = end_dt
         elif start_dt:
-            query += " AND dep_date >= :start_date"
+            date_filter += " AND dep_date >= :start_date"
             params["start_date"] = start_dt
         elif end_dt:
-            query += " AND dep_date <= :end_date"
+            date_filter += " AND dep_date <= :end_date"
             params["end_date"] = end_dt
-        result = self.db.execute(text(query), params)
-        rows = result.fetchall()
-        rows = [dict(row._mapping) for row in rows]
-        if not rows:
+        
+        # Агрегированные запросы
+        # 1. Общая статистика
+        general_query = f"""
+            SELECT
+                COUNT(*) as total_flights,
+                SUM(COALESCE(duration_min, 0)) as total_duration,
+                AVG(COALESCE(duration_min, 0)) as avg_duration,
+                MAX(region_name) as region_name
+            FROM flights_new
+            {date_filter}
+        """
+        general_result = self.db.execute(text(general_query), params).fetchone()
+        
+        if not general_result or general_result.total_flights == 0:
             raise HTTPException(status_code=404, detail="No flights for this region and date range")
-        return self._process_region_data(rows, region_id)
+        
+        # 2. Статистика по часам
+        time_query = f"""
+            SELECT
+                EXTRACT(HOUR FROM start_ts) as hour,
+                COUNT(*) as count
+            FROM flights_new
+            {date_filter} AND start_ts IS NOT NULL
+            GROUP BY EXTRACT(HOUR FROM start_ts)
+            ORDER BY hour
+        """
+        time_results = self.db.execute(text(time_query), params).fetchall()
+        
+        # 3. Статистика по дням недели
+        weekday_query = f"""
+            SELECT
+                EXTRACT(ISODOW FROM start_ts) as weekday,
+                COUNT(*) as count
+            FROM flights_new
+            {date_filter} AND start_ts IS NOT NULL
+            GROUP BY EXTRACT(ISODOW FROM start_ts)
+            ORDER BY weekday
+        """
+        weekday_results = self.db.execute(text(weekday_query), params).fetchall()
+        
+        # 4. Статистика по месяцам
+        month_query = f"""
+            SELECT
+                EXTRACT(MONTH FROM start_ts) as month,
+                COUNT(*) as count
+            FROM flights_new
+            {date_filter} AND start_ts IS NOT NULL
+            GROUP BY EXTRACT(MONTH FROM start_ts)
+            ORDER BY month
+        """
+        month_results = self.db.execute(text(month_query), params).fetchall()
+        
+        # 5. Статистика по типам БПЛА
+        type_query = f"""
+            SELECT
+                uav_type,
+                COUNT(*) as count
+            FROM flights_new
+            {date_filter}
+            GROUP BY uav_type
+        """
+        type_results = self.db.execute(text(type_query), params).fetchall()
+        
+        # 6. Статистика по операторам
+        operator_query = f"""
+            SELECT
+                operator,
+                COUNT(*) as count
+            FROM flights_new
+            {date_filter} AND operator IS NOT NULL
+            GROUP BY operator
+        """
+        operator_results = self.db.execute(text(operator_query), params).fetchall()
+        
+        # 7. Топ 10 полетов по длительности
+        top_query = f"""
+            SELECT *
+            FROM flights_new
+            {date_filter}
+            ORDER BY duration_min DESC NULLS LAST
+            LIMIT 10
+        """
+        top_results = self.db.execute(text(top_query), params).fetchall()
+        
+        # Формируем результат
+        month_names = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
+                       "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"]
+        week_names = ["", "Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
+        
+        times_dict = {f"{int(row.hour)}:00": row.count for row in time_results}
+        weekdays_dict = {week_names[int(row.weekday)]: row.count for row in weekday_results}
+        months_dict = {month_names[int(row.month) - 1]: row.count for row in month_results}
+        types_dict = {row.uav_type or "": row.count for row in type_results}
+        operators_dict = {row.operator: row.count for row in operator_results}
+        
+        # Топ полетов
+        top_flights = []
+        for row in top_results:
+            r = dict(row._mapping)
+            zone_data = json.loads(r["zone_data"]) if isinstance(r["zone_data"], str) else r["zone_data"]
+            top_flights.append(self._format_flight_data(r, zone_data))
+        
+        return {
+            "name": general_result.region_name,
+            "duration": int(general_result.total_duration) if general_result.total_duration else 0,
+            "avg_duration": round(general_result.avg_duration) if general_result.avg_duration else 0,
+            "flights": general_result.total_flights,
+            "month": months_dict,
+            "weekdays": weekdays_dict,
+            "types": types_dict,
+            "operators": operators_dict,
+            "times": times_dict,
+            "regions": {
+                str(region_id): {
+                    "name": general_result.region_name,
+                    "flights": general_result.total_flights,
+                    "avgDuration": round(general_result.avg_duration) if general_result.avg_duration else 0,
+                    "duration": int(general_result.total_duration) if general_result.total_duration else 0,
+                }
+            },
+            "top": top_flights,
+        }
 
     def _process_region_data(self, rows: List[Dict], region_id: int) -> Dict[str, Any]:
         durations = []
@@ -202,23 +320,153 @@ class FlightsAnalyticsService:
         """Оптимизированная статистика с использованием SQL агрегации"""
         start_dt = self._parse_date_safe(start_date, "start_date")
         end_dt = self._parse_date_safe(end_date, "end_date")
-        query = "SELECT * FROM flights_new WHERE 1=1"
+        
         params = {}
+        date_filter = "WHERE 1=1"
         if start_dt and end_dt:
-            query += " AND dep_date BETWEEN :start_date AND :end_date"
+            date_filter += " AND dep_date BETWEEN :start_date AND :end_date"
             params = {"start_date": start_dt, "end_date": end_dt}
         elif start_dt:
-            query += " AND dep_date >= :start_date"
+            date_filter += " AND dep_date >= :start_date"
             params = {"start_date": start_dt}
         elif end_dt:
-            query += " AND dep_date <= :end_date"
+            date_filter += " AND dep_date <= :end_date"
             params = {"end_date": end_dt}
-        result = self.db.execute(text(query), params)
-        rows = result.fetchall()
-        rows_dicts = [dict(row._mapping) for row in rows]
-        if not rows_dicts:
-            raise HTTPException(status_code=404, detail="No flights found for this date range")
-        return self._process_general_statistics(rows_dicts)
+        
+        # Агрегированные запросы для получения статистики
+        # 1. Общая статистика
+        general_query = f"""
+            SELECT
+                COUNT(*) as total_flights,
+                SUM(COALESCE(duration_min, 0)) as total_duration,
+                AVG(COALESCE(duration_min, 0)) as avg_duration
+            FROM flights_new
+            {date_filter}
+        """
+        general_result = self.db.execute(text(general_query), params).fetchone()
+        
+        # 2. Статистика по регионам
+        region_query = f"""
+            SELECT
+                region_id,
+                region_name,
+                COUNT(*) as flights,
+                SUM(COALESCE(duration_min, 0)) as duration,
+                AVG(COALESCE(duration_min, 0)) as avg_duration
+            FROM flights_new
+            {date_filter}
+            GROUP BY region_id, region_name
+        """
+        region_results = self.db.execute(text(region_query), params).fetchall()
+        
+        # 3. Статистика по часам
+        time_query = f"""
+            SELECT
+                EXTRACT(HOUR FROM start_ts) as hour,
+                COUNT(*) as count
+            FROM flights_new
+            {date_filter} AND start_ts IS NOT NULL
+            GROUP BY EXTRACT(HOUR FROM start_ts)
+            ORDER BY hour
+        """
+        time_results = self.db.execute(text(time_query), params).fetchall()
+        
+        # 4. Статистика по дням недели
+        weekday_query = f"""
+            SELECT
+                EXTRACT(ISODOW FROM start_ts) as weekday,
+                COUNT(*) as count
+            FROM flights_new
+            {date_filter} AND start_ts IS NOT NULL
+            GROUP BY EXTRACT(ISODOW FROM start_ts)
+            ORDER BY weekday
+        """
+        weekday_results = self.db.execute(text(weekday_query), params).fetchall()
+        
+        # 5. Статистика по месяцам
+        month_query = f"""
+            SELECT
+                EXTRACT(MONTH FROM start_ts) as month,
+                COUNT(*) as count
+            FROM flights_new
+            {date_filter} AND start_ts IS NOT NULL
+            GROUP BY EXTRACT(MONTH FROM start_ts)
+            ORDER BY month
+        """
+        month_results = self.db.execute(text(month_query), params).fetchall()
+        
+        # 6. Статистика по типам БПЛА
+        type_query = f"""
+            SELECT
+                uav_type,
+                COUNT(*) as count
+            FROM flights_new
+            {date_filter}
+            GROUP BY uav_type
+        """
+        type_results = self.db.execute(text(type_query), params).fetchall()
+        
+        # 7. Статистика по операторам
+        operator_query = f"""
+            SELECT
+                operator,
+                COUNT(*) as count
+            FROM flights_new
+            {date_filter} AND operator IS NOT NULL
+            GROUP BY operator
+        """
+        operator_results = self.db.execute(text(operator_query), params).fetchall()
+        
+        # 8. Топ 100 полетов по длительности
+        top_query = f"""
+            SELECT *
+            FROM flights_new
+            {date_filter}
+            ORDER BY duration_min DESC NULLS LAST
+            LIMIT 100
+        """
+        top_results = self.db.execute(text(top_query), params).fetchall()
+        
+        # Формируем результат
+        month_names = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
+                       "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"]
+        week_names = ["", "Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
+        
+        # Обработка результатов
+        region_stats = {}
+        for row in region_results:
+            region_stats[str(row.region_id)] = {
+                "name": row.region_name,
+                "flights": row.flights,
+                "duration": int(row.duration),
+                "avgDuration": round(row.avg_duration) if row.avg_duration else 0
+            }
+        
+        times_dict = {f"{int(row.hour)}:00": row.count for row in time_results}
+        weekdays_dict = {week_names[int(row.weekday)]: row.count for row in weekday_results}
+        months_dict = {month_names[int(row.month) - 1]: row.count for row in month_results}
+        types_dict = {row.uav_type or "": row.count for row in type_results}
+        operators_dict = {row.operator: row.count for row in operator_results}
+        
+        # Топ полетов
+        top_flights = []
+        for row in top_results:
+            r = dict(row._mapping)
+            zone_data = json.loads(r["zone_data"]) if isinstance(r["zone_data"], str) else r["zone_data"]
+            top_flights.append(self._format_flight_data(r, zone_data))
+        
+        return {
+            "duration": int(general_result.total_duration) if general_result.total_duration else 0,
+            "avg_duration": round(general_result.avg_duration) if general_result.avg_duration else 0,
+            "flights": general_result.total_flights,
+            "month": months_dict,
+            "weekdays": weekdays_dict,
+            "times": times_dict,
+            "types": types_dict,
+            "operators": operators_dict,
+            "regions": region_stats,
+            "top": top_flights
+        }
 
     def _process_general_statistics(self, rows_dicts: List[Dict]) -> Dict[str, Any]:
         durations = []
