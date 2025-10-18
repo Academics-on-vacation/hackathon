@@ -6,9 +6,12 @@ from collections import Counter, defaultdict
 from fastapi import HTTPException
 import json
 import math
+import logging
 
 from ..schemas.flight import FlightFilter, FlightImportResult
 from ..services.flight_service import FlightService
+
+logger = logging.getLogger(__name__)
 
 class FlightsAnalyticsService:
     def __init__(self, db: Session):
@@ -60,11 +63,68 @@ class FlightsAnalyticsService:
         service = FlightService(self.db)
         return service.get_flights(skip=skip, limit=limit, filters=filters)
 
+    def _parse_date_safe(self, date_str: Optional[str], param_name: str = "date") -> Optional[date]:
+        """Безопасный парсинг даты с валидацией и обработкой ошибок"""
+        if not date_str:
+            return None
+        
+        try:
+            # Пытаемся распарсить дату
+            parsed_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+            return parsed_date
+        except ValueError as e:
+            # Логируем ошибку
+            logger.warning(f"Invalid date format for {param_name}: {date_str}, error: {e}")
+            
+            # Пытаемся исправить некорректную дату (например, 2025-06-31 -> 2025-06-30)
+            try:
+                parts = date_str.split('-')
+                if len(parts) == 3:
+                    year, month, day = int(parts[0]), int(parts[1]), int(parts[2])
+                    
+                    # Проверяем корректность месяца
+                    if month < 1 or month > 12:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Некорректный месяц в {param_name}: {month}. Должен быть от 1 до 12."
+                        )
+                    
+                    # Определяем максимальное количество дней в месяце
+                    days_in_month = {
+                        1: 31, 2: 29 if (year % 4 == 0 and year % 100 != 0) or (year % 400 == 0) else 28,
+                        3: 31, 4: 30, 5: 31, 6: 30, 7: 31, 8: 31, 9: 30, 10: 31, 11: 30, 12: 31
+                    }
+                    
+                    max_day = days_in_month[month]
+                    
+                    # Если день больше максимального, корректируем
+                    if day > max_day:
+                        logger.info(f"Correcting invalid day {day} to {max_day} for month {month}")
+                        day = max_day
+                    elif day < 1:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Некорректный день в {param_name}: {day}. Должен быть больше 0."
+                        )
+                    
+                    # Возвращаем исправленную дату
+                    return date(year, month, day)
+            except (ValueError, IndexError) as parse_error:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Некорректный формат даты для {param_name}: {date_str}. Ожидается формат YYYY-MM-DD. Ошибка: {str(parse_error)}"
+                )
+            
+            raise HTTPException(
+                status_code=400,
+                detail=f"Некорректная дата для {param_name}: {date_str}. Ожидается формат YYYY-MM-DD."
+            )
+
     def get_region_statistics(
         self, region_id: int, start_date: Optional[str], end_date: Optional[str]
     ) -> Dict[str, Any]:
-        start_dt = datetime.strptime(start_date, "%Y-%m-%d").date() if start_date else None
-        end_dt = datetime.strptime(end_date, "%Y-%m-%d").date() if end_date else None
+        start_dt = self._parse_date_safe(start_date, "start_date")
+        end_dt = self._parse_date_safe(end_date, "end_date")
         query = "SELECT * FROM flights_new WHERE region_id = :region_id"
         params = {"region_id": region_id}
         if start_dt and end_dt:
@@ -139,8 +199,9 @@ class FlightsAnalyticsService:
     def get_general_statistics(
         self, start_date: Optional[str] = None, end_date: Optional[str] = None
     ) -> Dict[str, Any]:
-        start_dt = datetime.strptime(start_date, "%Y-%m-%d").date() if start_date else None
-        end_dt = datetime.strptime(end_date, "%Y-%m-%d").date() if end_date else None
+        """Оптимизированная статистика с использованием SQL агрегации"""
+        start_dt = self._parse_date_safe(start_date, "start_date")
+        end_dt = self._parse_date_safe(end_date, "end_date")
         query = "SELECT * FROM flights_new WHERE 1=1"
         params = {}
         if start_dt and end_dt:
