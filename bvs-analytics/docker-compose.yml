@@ -6,15 +6,16 @@ services:
     container_name: bvs-analytics-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: bvs_analytics
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-bvs_analytics}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+    networks:
+      - backend-network
+      - frontend-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d bvs_analytics"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-bvs_analytics}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -25,17 +26,17 @@ services:
       dockerfile: backend/Dockerfile
     container_name: bvs-analytics-backend
     restart: unless-stopped
-    ports:
-      - "8000:8000"
+    env_file:
+      - .env
     volumes:
       - ./backend/uploads:/app/uploads
       - ./backend/logs:/app/logs
-    environment:
-      - PYTHONUNBUFFERED=1
-      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/bvs_analytics
     depends_on:
       postgres:
         condition: service_healthy
+    networks:
+      - backend-network
+      - frontend-network
     healthcheck:
       test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health')"]
       interval: 30s
@@ -53,12 +54,21 @@ services:
       - "80:80"
     depends_on:
       - backend
+    networks:
+      - frontend-network
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
+
+networks:
+  backend-network:
+    driver: bridge
+    internal: false  # Внутренняя сеть для БД и бэкенда
+  frontend-network:
+    driver: bridge  # Сеть для связи фронтенда с бэкендом
 
 volumes:
   postgres_data:
