@@ -301,7 +301,63 @@ class FlightParser:
 
         return None
 
-    def parse_operator(self, shr_text: str) -> str|None:
+    def parse_model(self, shr_text):
+        bws_model = None
+        model = None
+        shr_text = shr_text.replace('\n', ' ')
+        dji_match = re.search(
+            r"("
+                      r"DJI FPV APEX|"
+                      r"DJI MAVIC 3E|"
+                      r"DJI MAVIC 2 PRO|"
+                      r"DJI MATRICE 30T|"
+                      r"DJI MATRICE 300|"
+                      r"DJI PHANTOM 4|"
+                      r"DJI PHANTOM 4 PRO|"
+                      r"DJI MAVIC 3T|"
+                      r"DJI MAVIC 3|"
+                      r"DJI MAVIC 2 ZOOM|"
+                      r"DJI MAVIC ENTERPRISE|"
+                      r"DJI MINI 3 PRO|"
+                      r"DJI AGRAS T40|"
+                      r"DJI AGRAS T40|"
+                      r"DJI (TECHNOLOGY CO )?INSPIRE"
+                      r")",
+        shr_text, re.MULTILINE)
+        if dji_match:
+            if dji_match.group(0):
+                model = dji_match.group(0)
+        else:
+            dji_match = re.search(r"(DJI ([A-Z|a-z|0-9|_|\-|МАTRICE]+\ ?\n?){1,4})", shr_text, re.MULTILINE)
+            if dji_match:
+                model = dji_match.group(0)
+
+        if not model:
+            bws_match = re.search(
+                r'(BWS|БВС)(\ |\n)(([A-Z|a-z][A-Z|a-z|0-9|_|\-|МАTRICE]+\ ?\n?){1,6})',
+                shr_text
+            )
+            if bws_match:
+                if bws_match.group(3):
+                    model = bws_match.group(3)
+
+
+        if model:
+            model = model.strip().replace('М', 'M').replace('А', 'A').replace('\n', ' ')
+            if len(model.split(" DJI")) > 1:
+                if "DJI" not in model.split(" DJI")[0]:
+                    model = model.split(" DJI")[0]
+            if len(model.split(" GT")) > 1:
+                model = model.split(" GT")[0]
+            if "TECHNOLOGY CO" in model:
+                model = model.replace("TECHNOLOGY CO ", '')
+            if model in ("Z-16", "ZALA", "ZALA Z-16-5G", "Z-16 PERM"):
+                model = "ZALA Z-16"
+            if model not in ("SID", "K079013 OK79004"):
+                bws_model = model
+            return bws_model
+
+    def parse_operator(self, shr_text: str):
         oper = re.search(r'OPR\/([A-Z|a-z|A-Я|а-я|0-9|\n|\ |+|-]+)(\ \w+\/)', shr_text)
         if oper:
             return oper.group(1).replace('\n', ' ')
@@ -507,9 +563,12 @@ class FlightParser:
             arr_lat, arr_lon = self.parse_latlon(adarrz) if adarrz else (None, None)
             arr_code, arr_name = None, None
 
+
+        model = self.parse_model(shr_text)
         # Создание объекта полета
         flight_data = {
             "sid": sid,
+            "model": model,
             "center_name": center_name or None,
             "uav_type": uav_type,
             "operator": operator,
