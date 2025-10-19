@@ -1,5 +1,6 @@
 import tempfile
 import shutil
+import docker
 import subprocess
 from pathlib import Path
 from typing import Dict, Any
@@ -10,7 +11,7 @@ from ..core.config import settings
 
 def generate_report(db : Session, begin_date: str | None = None, end_date: str | None = None, region_id: int | None = None, extended: bool = False) -> str:
     # Create temporary directory for thread-safe operation
-    with tempfile.TemporaryDirectory() as temp_dir:
+    with tempfile.TemporaryDirectory(dir=settings.LATEX_DIR) as temp_dir:
         # prepare temporary latex directory
         temp_dir_path = Path(temp_dir)
         (temp_dir_path / "sections").mkdir()
@@ -30,7 +31,7 @@ def generate_report(db : Session, begin_date: str | None = None, end_date: str |
         
         # Compile LaTeX
         retry_counter = 0
-        while retry_counter < settings.COMPILE_RETRY and not compile_latex(temp_dir_path):
+        while retry_counter < settings.COMPILE_RETRY and not compile_latex_docker(temp_dir_path):
             retry_counter += 1
             print(f"Retry counter: {retry_counter}")
         
@@ -137,7 +138,7 @@ def generate_metrics_tex(data: Dict[str, Any], images : list[str] = []) -> str:
     \caption{{{graph_title_mapping[image]}}}
 \end{{figure}}
 """
-    top_regions = sorted(data['regions'].values(), key=lambda x : x.get("flights"), reverse=True)[:15]
+    top_regions = sorted(data.get('regions', {}).values(), key=lambda x : x.get("flights"), reverse=True)[:15]
     top_regions_str = '\n'.join(f'    \\item {{ {region.get("name")} }}' for region in top_regions)
     return fr"""\section*{{Основные метрики}}
 \begin{{itemize}}
@@ -147,16 +148,39 @@ def generate_metrics_tex(data: Dict[str, Any], images : list[str] = []) -> str:
     \item \textbf{{Число уникальных типов БПЛА:}} {sum(1 for _ in data['types'])}
     \item \textbf{{Число операторов:}} {sum(1 for _ in data['operators'])}
 \end{{itemize}}
-
+""" + (fr"""
 \subsection*{{Топ-15 регионов по количеству полётов}}
 
 \begin{{enumerate}}
     {top_regions_str}
 \end{{enumerate}}
-""" + (("\\section*{Графики}\n" + graphics) if graphics else "")
+
+""" if top_regions else "")+ (("\\section*{Графики}\n" + graphics) if graphics else "")
+
+def compile_latex_docker(temp_dir_path: Path) -> bool:
+    client = docker.from_env()
+    compile_cmd = f"""pdflatex -interaction=nonstopmode main.tex \
+    && pdflatex -interaction=nonstopmode main.tex"""
+
+    try:
+        container = client.containers.get(settings.LATEX_CONTAINER)
+        result = container.exec_run(compile_cmd, workdir = f"/data/{temp_dir_path.parts[-1]}")
+
+        if result.exit_code:
+            print(f"Error during LaTeX compilation. Exit code: {result.exit_code}")
+            print(result.output.decode())
+            return False
+
+    except docker.errors.NotFound:
+        print(f"LaTeX container '{settings.LATEX_CONTAINER}' not found")
+        return False
+    except Exception as e:
+        print(f"Error during LaTeX compilation: {e}")
+        return False
+    return True
 
 def compile_latex(temp_dir_path: Path) -> bool:
-    """Compile LaTeX document using pdflatex"""
+    """Compile LaTeX document using pdflatex (deprecated)"""
     try:
         # Run pdflatex twice to resolve references
         for i in range(2):
@@ -181,3 +205,6 @@ def compile_latex(temp_dir_path: Path) -> bool:
     except Exception as e:
         print(f"Error during LaTeX compilation: {e}")
         return False
+
+if __name__ == '__main__':
+    generate_report(Session())
