@@ -437,6 +437,10 @@ class FlightParser:
         # 4. Ничего не найдено
         return {'type': 'unknown', 'data': None}
 
+    def is_legagl_operator(self, operator):
+        pattern = r'^(ООО|ГК|АНО|ЗАО|ОАО|ПАО|ИП|НКО|ТСЖ|МУП|ГУ|ГБУ|ФСО|М4С|ФИЛИАЛ|ДЕПАРТАМЕНТ|ОГАУ|ФГУП|АО|ППК|МВД|ГЛАВНОЕ|УМВД|УПРАВЛЕНИЕ|ИГХ|СПСА|ГАНОУ|ГКУ|РОСРЕЕСТР|TRK|PAO|UTAIR-VU|БЕСПИЛОТНЫЕ ТЕХНОЛОГИИ|GK|ПОУ|МО|ОООГАУСС)\s+.+'
+        return bool(re.match(pattern, operator, re.IGNORECASE))
+
     def parse_row(self, center_name: str, shr_text: str,
                   dep_text: str, arr_text: str) -> Dict[str, Any]:
         """Парсинг одной строки из Excel и определение региона"""
@@ -447,9 +451,17 @@ class FlightParser:
         # Базовая информация
         sid = dep.get("SID") or arr.get("SID") or shr.get("SID")
         uav_type = shr.get("TYP") or dep.get("TYP") or arr.get("TYP")
-        operator = self.parse_operator(shr_text)
-        if operator is None:
-            operator = shr.get("OPR")
+        operator_real = self.parse_operator(shr_text)
+        operator = None
+        if operator_real is None:
+            operator_real = shr.get("OPR")
+
+        if operator_real:
+            if not self.is_legagl_operator(operator_real):
+                 operator = "Физическое лицо"
+            else:
+                operator = operator_real
+
         # Даты и времена
         add, atd = dep.get("ADD"), dep.get("ATD")
         ada, ata = arr.get("ADA"), arr.get("ATA")
@@ -572,6 +584,7 @@ class FlightParser:
             "center_name": center_name or None,
             "uav_type": uav_type,
             "operator": operator,
+            "operator_real": operator_real,
             "zone": zona,
             "dep": {
                 "date": dep_date.isoformat() if dep_date else None,

@@ -17,6 +17,7 @@ class FlightNew(Base):
     center_name = Column(String(255))
     uav_type = Column(String(100))
     operator = Column(String(255))
+    operator_real = Column(String(255))
 
     # Вылет
     dep_date = Column(Date)
