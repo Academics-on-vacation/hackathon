@@ -45,7 +45,7 @@
               </router-link>
             </li>
             <li>
-              <router-link to="/load" class="flex items-center px-4 py-3 rounded-lg hover:bg-blue-700 transition-all duration-200">
+              <router-link v-if="user.role == 2" to="/load" class="flex items-center px-4 py-3 rounded-lg hover:bg-blue-700 transition-all duration-200">
                 <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"/>
                 </svg>
@@ -81,7 +81,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import {computed, onMounted} from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuth } from '@/stores/authStore'
 
@@ -95,6 +95,10 @@ const user = computed(() => authUser.value)
 const showLayout = computed(() => {
   // Hide layout for login and other public routes
   return route.meta.requiresAuth !== false
+})
+
+onMounted(() => {
+  console.log(user)
 })
 
 const handleLogout = () => {

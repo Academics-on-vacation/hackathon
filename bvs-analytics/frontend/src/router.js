@@ -41,12 +41,12 @@ const routes = [
         name: 'History',
         component: History,
         props: true,
-        meta: { requiresAuth: true, requiresRole: "admin" }
+        meta: { requiresAuth: true, requiresRole: 2 }
     },
     {
         path: '/load',
         component: LoadPage,
-        meta: {requiresAuth: true, role: "admin"}
+        meta: {requiresAuth: true, requiresRole: 2 }
     },
     {
         path: '/regions',
