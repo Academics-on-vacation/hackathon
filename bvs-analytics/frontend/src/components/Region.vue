@@ -269,7 +269,11 @@ const loadRegions = async () => {
     flightsData.value = data_fl.flights
     regionStats.value = data_fl.regions
 
-    regions.value = data_fl.current
+
+    const geojson_request = await fetch('https://imdibil.ru/api/flights_stats/region/'+props.id)
+    const geojson = await geojson_request.json()
+    regions.value = geojson.current
+
     r_name.value = data_fl.name
     stats.value = {
       weekdays: data_fl.weekdays,
