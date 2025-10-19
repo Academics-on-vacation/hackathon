@@ -354,8 +354,8 @@ class FlightParser:
             if model in ("Z-16", "ZALA", "ZALA Z-16-5G", "Z-16 PERM"):
                 model = "ZALA Z-16"
             if model not in ("SID", "K079013 OK79004"):
-                bws_model = model
-            return bws_model
+                return model
+            return None
 
     def parse_operator(self, shr_text: str):
         oper = re.search(r'OPR\/([A-Z|a-z|A-Я|а-я|0-9|\n|\ |+|-]+)(\ \w+\/)', shr_text)
@@ -568,7 +568,7 @@ class FlightParser:
         # Создание объекта полета
         flight_data = {
             "sid": sid,
-            "model": model,
+            "bws_model": model,
             "center_name": center_name or None,
             "uav_type": uav_type,
             "operator": operator,
