@@ -33,8 +33,8 @@ class Settings(BaseSettings):
     # LaTeX Reports
     LATEX_COMPILER: str = "pdflatex"
     COMPILE_RETRY: int = 3
-    SAVE_DIR: str = "reports"
-    IMAGE_DIR: str = "images"
+    LATEX_DIR: str = "/app/latex_workspace"
+    LATEX_CONTAINER: str = "bvs-analytics-latex"
     REPORT_DIR: str = "./reports"
 
     class Config:

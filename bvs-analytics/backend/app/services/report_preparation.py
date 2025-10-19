@@ -17,7 +17,7 @@ from .flights_analytics_service import FlightsAnalyticsService
 from pathlib import Path
 
 
-def prepare_data(db : Session, image_dir: Path, start_date: str | None = None, end_date: str | None = None) -> dict:
+def prepare_data(db : Session, image_dir: Path, start_date: str | None = None, end_date: str | None = None, region_id: int | None = None) -> dict:
     """Получение сводных данных и построение графиков 
 
     Args:
@@ -44,9 +44,9 @@ def prepare_data(db : Session, image_dir: Path, start_date: str | None = None, e
     # Загрузка данных
     # -----------------------------
 
-    stats = FlightsAnalyticsService(db).get_general_statistics(start_date, end_date)
-
-
+    stats = FlightsAnalyticsService(db).get_region_statistics(region_id, start_date, end_date) if region_id else FlightsAnalyticsService(db).get_general_statistics(start_date, end_date)
+    if region_id:
+        stats.pop("regions", {})
     # Ожидаемая структура stats:
     # {
     #   "duration": int,
@@ -82,7 +82,7 @@ def prepare_data(db : Session, image_dir: Path, start_date: str | None = None, e
         df_top_count = df_regions.sort_values("flights", ascending=False).head(15)
         plt.figure(figsize=(12, 7))
         sns.barplot(data=df_top_count, x="flights", y="name", color="#3b82f6")
-        plt.title("Топ-15 регионов по количеству полётов")
+        plt.title("Топ-15df_regions регионов по количеству полётов")
         plt.xlabel("Количество полётов")
         plt.ylabel("Регион")
         plt.tight_layout()

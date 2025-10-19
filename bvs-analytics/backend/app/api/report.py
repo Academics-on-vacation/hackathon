@@ -12,15 +12,12 @@ report = APIRouter(prefix="/report", tags=["report"])
 
 @report.get("")
 def get_report(
-    # region_id: Optional[int] = Query(None, description="id региона"),
     start_date: Optional[str] = Query(None, description="Начало диапазона dep_date (YYYY-MM-DD)"),
     end_date: Optional[str] = Query(None, description="Конец диапазона dep_date (YYYY-MM-DD)"),
+    region_id: Optional[int] = Query(None, description="id региона"),
     db: Session = Depends(get_db)
     ):
-    # region_str = ''
-    # if region_id:
-    #     region_str = db.get(Region, region_id).name
-    filename = generate_report(db, start_date, end_date, None)
+    filename = generate_report(db, start_date, end_date, region_id)
     if not filename:
         raise HTTPException(status_code=500, detail="File didn't generate properly")
 
