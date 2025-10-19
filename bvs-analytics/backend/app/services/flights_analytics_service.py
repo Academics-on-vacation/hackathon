@@ -730,6 +730,11 @@ class FlightsAnalyticsService:
             "duration_min": r["duration_min"],
             "region_id": r["region_id"],
             "region_name": r["region_name"],
+            "arr_aerodrome_code": r["arr_aerodrome_code"],
+            "arr_aerodrome_name": r["arr_aerodrome_name"],
+            "dep_aerodrome_name": r["dep_aerodrome_name"],
+            "dep_aerodrome_code": r["dep_aerodrome_code"],
+            "bws_model": r["bws_model"],
         }
 
     def _generate_geojson_from_zone(self, zone: Dict[str, Any]) -> Dict[str, Any]:
