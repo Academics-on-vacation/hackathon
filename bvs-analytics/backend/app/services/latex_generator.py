@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from .report_preparation import prepare_data
 from ..core.config import settings
 
-def generate_report(db : Session, begin_date: str | None = None, end_date: str | None = None, region: str | None = None, extended: bool = False) -> str:
+def generate_report(db : Session, begin_date: str | None = None, end_date: str | None = None, region_id: int | None = None, extended: bool = False) -> str:
     # Create temporary directory for thread-safe operation
     with tempfile.TemporaryDirectory() as temp_dir:
         # prepare temporary latex directory
@@ -18,7 +18,8 @@ def generate_report(db : Session, begin_date: str | None = None, end_date: str |
         # Get data
         temp_image_path = temp_dir_path / "images"
         temp_image_path.mkdir()
-        data = prepare_data(db, temp_image_path, begin_date, end_date)
+        data = prepare_data(db, temp_image_path, begin_date, end_date, region_id)
+        region = data.get("name", "")
 
         # Generate latex content to files
         (temp_dir_path / "preamble.sty").write_text(generate_preamble(), encoding='utf-8')
@@ -76,7 +77,7 @@ def generate_main_tex(begin_date: str | None, end_date: str | None, region: str 
 \title{{{"Отчёт" if region else "Общий отчёт"} о статистике полётов БПЛА, {region + ", " if region else ""}{time_segment}}}
 \author{{Автоматически сгенерированный отчёт}}
 \date{{\today}}
-
+\usepackage{{preamble}}
 \begin{{document}}
 
 \begin{{titlepage}}
