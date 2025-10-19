@@ -14,11 +14,11 @@ def generate_report(db : Session, begin_date: str | None = None, end_date: str |
     with tempfile.TemporaryDirectory(dir=settings.LATEX_DIR) as temp_dir:
         # prepare temporary latex directory
         temp_dir_path = Path(temp_dir)
-        (temp_dir_path / "sections").mkdir()
+        (temp_dir_path / "sections").mkdir(exist_ok=True)
         
         # Get data
         temp_image_path = temp_dir_path / "images"
-        temp_image_path.mkdir()
+        temp_image_path.mkdir(exist_ok=True)
         data = prepare_data(db, temp_image_path, begin_date, end_date, region_id)
         region = data.get("name", "")
 
@@ -64,37 +64,39 @@ def generate_report(db : Session, begin_date: str | None = None, end_date: str |
 
 
 def generate_main_tex(begin_date: str | None, end_date: str | None, region: str | None, extended: bool) -> str:
-    time_segment = 'полный'
+    time_segment = 'За всё время'
     if begin_date:
         if end_date:
             time_segment = f'{begin_date}-{end_date}'
         else:
-            time_segment = f'с {begin_date}'
+            time_segment = f'С {begin_date}'
     elif end_date:
-        time_segment = f'до {end_date}'
+        time_segment = f'До {end_date}'
 
     return fr"""\documentclass[a4paper,11pt]{{report}}
 
-\title{{{"Отчёт" if region else "Общий отчёт"} о статистике полётов БПЛА, {region + ", " if region else ""}{time_segment}}}
+\title{{{"Отчёт" if region else "Общий отчёт"} о статистике полётов БПЛА, {region + ", " if region else ""}{time_segment.lower()}}}
 \author{{Автоматически сгенерированный отчёт}}
 \date{{\today}}
 \usepackage{{preamble}}
 \begin{{document}}
-
 \begin{{titlepage}}
     \centering
-    \vspace*{{2cm}}
+    \vspace*{{1cm}}
     
-    {{\Huge \textbf{{Статистика полётов БВС}}}}
+    {{\LARGE \textbf{{Отчёт о статистике полётов БПЛА}}}}\\
     
     \vspace{{3cm}}
     
     \begin{{tabular}}{{ll}}
-%        \textbf{{Регион:}} & {region if region else 'все'} \\
+        \textbf{{Регион:}} & {region if region else 'Все регионы'} \\
         \textbf{{Период:}} & {time_segment} \\
+        \textbf{{Дата формирования:}} & \today \\
     \end{{tabular}}
     
     \vfill
+    \raggedright
+    \small Автоматически сгенерированный отчёт
 \end{{titlepage}}
 
 \input{{sections/metrics.tex}}
@@ -107,14 +109,10 @@ def generate_preamble():
 \usepackage[utf8]{inputenc}
 \usepackage[T2A]{fontenc}
 \usepackage[russian]{babel}
-\usepackage{amsmath}
 \usepackage{graphicx}
 \usepackage{geometry}
 \geometry{a4paper, margin=2.5cm}
-\usepackage{{float}}
-
-% For tables
-\usepackage{array}
+\usepackage{float}
 \usepackage{booktabs}
 """
 
@@ -138,24 +136,55 @@ def generate_metrics_tex(data: Dict[str, Any], images : list[str] = []) -> str:
     \caption{{{graph_title_mapping[image]}}}
 \end{{figure}}
 """
-    top_regions = sorted(data.get('regions', {}).values(), key=lambda x : x.get("flights"), reverse=True)[:15]
-    top_regions_str = '\n'.join(f'    \\item {{ {region.get("name")} }}' for region in top_regions)
-    return fr"""\section*{{Основные метрики}}
-\begin{{itemize}}
-    \item \textbf{{Общее количество полетов:}} {data['flights']}
-    \item \textbf{{Суммарная длительность полетов:}} {data['duration']} минут
-    \item \textbf{{Средняя длительность полета:}} {data['avg_duration']} минут
-    \item \textbf{{Число уникальных типов БПЛА:}} {sum(1 for _ in data['types'])}
-    \item \textbf{{Число операторов:}} {sum(1 for _ in data['operators'])}
-\end{{itemize}}
-""" + (fr"""
-\subsection*{{Топ-15 регионов по количеству полётов}}
+    
+    regions = data.get('regions', {}).values()
+    n_regions= min(len(regions), 15)
 
-\begin{{enumerate}}
-    {top_regions_str}
-\end{{enumerate}}
+    region_tables = ""
+    if n_regions:
+        region_tables += "\\section*{Рейтинг по регионам}\n\n"
+        region_data_mapping = [
+            {"key" : "flights", "caption" : "по общему количеству полётов", "column" : "Число полётов"},
+            {"key" : "duration", "caption" : "по суммарному времени полётов", "column" : "Время полётов (мин)"}
+        ]
+        for table_data in region_data_mapping:
+            table_content = '\n        '.join(
+                f'{i+1} & {region.get("name", "")} & {region.get(table_data["key"], 0)} \\\\'
+                for i, region in enumerate(
+                    sorted(regions, reverse=True, key=lambda x : x.get(table_data["key"], 0))[:15]
+                )
+            )
+            region_tables += fr"""
+\begin{{table}}[H]
+    \centering
+    \begin{{tabular}}{{llr}}
+        \toprule
+        \textnumero & {{Регион}} & {{{table_data["column"]}}}\\
+        \midrule
+        {table_content}
+        \bottomrule
+    \end{{tabular}}
+    \caption{{Топ-{n_regions} регионов {table_data["caption"]}}}
+\end{{table}}
+"""
 
-""" if top_regions else "")+ (("\\section*{Графики}\n" + graphics) if graphics else "")
+    return fr"""\chapter*{{Данные о полётах}}
+\section*{{Основные метрики}}
+\begin{{table}}[H]
+    \centering
+    \begin{{tabular}}{{p{{0.7\textwidth}}r}}
+        \toprule
+        \textbf{{Параметр}} & \textbf{{Значение}} \\
+        \midrule
+        Общее количество полетов:           & {data.get('flights', 0)} \\
+        Суммарная длительность полетов:     & {data.get('duration', 0)} минут \\
+        Средняя длительность полета:        & {data.get('avg_duration', 0)} минут \\
+        Число уникальных типов БПЛА:        & {sum(1 for _ in data.get('types', []))} \\
+        Число операторов:                   & {sum(1 for _ in data.get('operators', []))} \\
+        \bottomrule
+    \end{{tabular}}
+\end{{table}}
+""" + region_tables + (("\n\\chapter*{Графики и диаграммы}\n" + graphics) if graphics else "")
 
 def compile_latex_docker(temp_dir_path: Path) -> bool:
     client = docker.from_env()
@@ -205,6 +234,3 @@ def compile_latex(temp_dir_path: Path) -> bool:
     except Exception as e:
         print(f"Error during LaTeX compilation: {e}")
         return False
-
-if __name__ == '__main__':
-    generate_report(Session())
