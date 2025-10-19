@@ -289,7 +289,7 @@ class FlightReportBot:
 
 def main():
     """Точка входа"""
-    token = os.getenv('8431838799:AAEkfT-qNzYZARkMDEAoIlBHGYJpzesRokg')
+    token = os.getenv('TELEGRAM_BOT_TOKEN')
     if not token:
         raise ValueError("TELEGRAM_BOT_TOKEN environment variable is required")
     
