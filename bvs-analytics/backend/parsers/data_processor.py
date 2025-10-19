@@ -162,6 +162,7 @@ class DataProcessor:
             'operator': flight_data.get('operator'),
             'operator_real': flight_data.get('operator_real'),
             'sid': flight_data.get('sid'),
+            'bws_model': flight_data.get('bws_model'),
             # 'raw_shr_message': flight_data.get('raw_shr_message'),
             # 'raw_dep_message': flight_data.get('raw_dep_message'),
             # 'raw_arr_message': flight_data.get('raw_arr_message'),
