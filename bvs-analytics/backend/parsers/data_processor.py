@@ -160,6 +160,7 @@ class DataProcessor:
             # 'registration': flight_data.get('registration'),
             'uav_type': flight_data.get('uav_type'),
             'operator': flight_data.get('operator'),
+            'operator_real': flight_data.get('operator_real'),
             'sid': flight_data.get('sid'),
             # 'raw_shr_message': flight_data.get('raw_shr_message'),
             # 'raw_dep_message': flight_data.get('raw_dep_message'),
