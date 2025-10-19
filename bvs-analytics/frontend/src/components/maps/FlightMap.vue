@@ -46,7 +46,7 @@
         <div class="point-indicator departure"></div>
         <div>
           <strong>A: Вылет</strong>
-          <div>{{ flight.dep.lat.toFixed(6) }}, {{ flight.dep.lon.toFixed(6) }}</div>
+          <div>{{ flight.dep?.lat?.toFixed(6) }}, {{ flight.dep?.lon?.toFixed(6) }}</div>
           <small>{{ formatDateTime(flight.dep.date, flight.dep.time_hhmm) }}</small>
         </div>
       </div>
