@@ -39,6 +39,7 @@ class FlightNew(Base):
     end_ts = Column(DateTime(timezone=True))
     duration_min = Column(Integer)
 
+    bws_model = Column(String(255))
     # Зона и регион
     zone_data = Column(JSONB if "postgres" in settings.DATABASE_URL else JSON)
     region_id = Column(Integer)
