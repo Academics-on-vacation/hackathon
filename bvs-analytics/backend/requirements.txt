@@ -24,3 +24,4 @@ structlog==23.2.0
 pytest
 httpx
 pydantic-settings
+python-telegram-bot

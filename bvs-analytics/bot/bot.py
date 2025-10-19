@@ -1,18 +1,23 @@
 
+import sys
 import os
 import logging
 import tempfile
 from pathlib import Path
 from typing import Optional
 
+# Добавляем путь к backend для импорта модулей
+backend_path = Path(__file__).parent.parent / "backend"
+sys.path.insert(0, str(backend_path))
+
 from telegram import Update, Document
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
 from sqlalchemy.orm import Session
-from services.flight_service import FlightService
-from services.flights_analytics_service import FlightsAnalyticsService
-from latex_generator import generate_report
-from core.database import get_db
+from app.services.flight_service import FlightService
+from app.services.flights_analytics_service import FlightsAnalyticsService
+from app.services.latex_generator import generate_report
+from app.core.database import get_db
 
 # Настройка логирования
 logging.basicConfig(
@@ -49,7 +54,7 @@ class FlightReportBot:
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Обработчик команды /start"""
         welcome_text = (
-            "🛩️ *Добро пожаловать в Flight Report Bot!*\\n\\n"
+            "🛩️ *Добро пожаловать в Flight Report Bot\\!*\\n\\n"
             "Я помогу вам сгенерировать отчет по полетам БПЛА из Excel файлов\\.\\n\\n"
             "📋 *Как пользоваться:*\\n"
             "1\\. Отправьте мне Excel файл \\(только \\.xlsx\\)\\n"
