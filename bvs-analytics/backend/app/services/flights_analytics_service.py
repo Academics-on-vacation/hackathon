@@ -194,11 +194,11 @@ class FlightsAnalyticsService:
         # 5. Статистика по типам БПЛА
         type_query = f"""
             SELECT
-                uav_type,
+                bws_model,
                 COUNT(*) as count
             FROM flights_new
             {date_filter}
-            GROUP BY uav_type
+            GROUP BY bws_model
         """
         type_results = self.db.execute(text(type_query), params).fetchall()
         
@@ -231,7 +231,7 @@ class FlightsAnalyticsService:
         times_dict = {f"{int(row.hour)}:00": row.count for row in time_results}
         weekdays_dict = {week_names[int(row.weekday)]: row.count for row in weekday_results}
         months_dict = {month_names[int(row.month) - 1]: row.count for row in month_results}
-        types_dict = {row.uav_type or "": row.count for row in type_results}
+        types_dict = {row.bws_model or "": row.count for row in type_results}
         operators_dict = {row.operator: row.count for row in operator_results}
         
         # Топ полетов
