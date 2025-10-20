@@ -443,7 +443,7 @@ const exportToPDF = async () => {
     let filename = 'flight_report.pdf'
 
     if (contentDisposition) {
-      const filenameMatch = contentDisposition.match(/filename="?(.+)"?/i)
+      const filenameMatch = contentDisposition.match(/filename="?(.+)"/i)
       if (filenameMatch && filenameMatch.length === 2) {
         filename = filenameMatch[1]
       }
